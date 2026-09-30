@@ -40,6 +40,7 @@ status_entity: sensor.amina_s_ev_status
 
 The visual editor includes optional overrides for installations where an entity has a different name. The available override filters follow the entity metadata exposed by Home Assistant:
 
+- Sub-status can use any entity type and replaces the secondary status text.
 - Power, current, voltage, and energy use sensor device classes.
 - Link quality uses the sensor with the `lqi` unit.
 - Charge limit uses a `number` entity.

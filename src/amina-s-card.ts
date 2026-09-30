@@ -4,6 +4,7 @@ import { customElement, property } from "lit/decorators.js";
 interface AminaCardConfig {
   title?: string;
   status_entity: string;
+  sub_status_entity?: string;
   power_entity?: string;
   current_entity?: string;
   voltage_entity?: string;
@@ -208,7 +209,7 @@ class AminaCardConfigEditor extends HTMLElement {
     return wrapper;
   }
 
-  private getDomainForField(field: string): string[] {
+  private getDomainForField(field: string): string[] | undefined {
     const domains: Record<string, string[]> = {
       status_entity: ["sensor"],
       power_entity: ["sensor"],
@@ -223,7 +224,7 @@ class AminaCardConfigEditor extends HTMLElement {
       derated_entity: ["binary_sensor"],
     };
 
-    return domains[field] || ["sensor", "binary_sensor", "number", "switch"];
+    return domains[field];
   }
 
   private updateConfig(changedKey?: string, changedValue?: string) {
@@ -301,6 +302,7 @@ class AminaCardConfigEditor extends HTMLElement {
 
     if (this._showOptional) {
       [
+        ["sub_status_entity", "Sub-status entity"],
         ["power_entity", "Power entity"],
         ["current_entity", "Current entity"],
         ["voltage_entity", "Voltage entity"],
@@ -674,6 +676,7 @@ export class AminaSCard extends LitElement {
 
   private getStatusMeta() {
     const status = this.normaliseStatus(this.getState(this.config.status_entity));
+    const subStatus = this.getEntity(this.config.sub_status_entity)?.state;
     const normalized = status.toLowerCase();
     const charging = normalized === "charging";
     const connected = normalized === "ev connected";
@@ -699,8 +702,9 @@ export class AminaSCard extends LitElement {
       statusClass = "status-warning";
     }
 
-    const secondary =
-      hasAlarm
+    const secondary = subStatus
+      ? String(subStatus)
+      : hasAlarm
         ? alarmText
         : charging
           ? "Power is being delivered"
