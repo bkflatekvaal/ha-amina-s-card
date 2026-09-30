@@ -29,6 +29,14 @@ type: module
 
 Then add the card to a dashboard.
 
+## Recent changes
+
+### v1.0.2
+
+- Improved the compact header layout by moving the charge-limit readout into the telemetry row.
+- Added support for an optional `sub_status_entity` override to replace the secondary status text.
+- Updated the config editor defaults and documentation for the override fields.
+
 ## Configuration
 
 Only `status_entity` is required. The card derives the related entity IDs from its name. For example, `sensor.amina_s_ev_status` derives the Amina S entities using the `amina_s` base name.

@@ -456,7 +456,7 @@ export class AminaSCard extends LitElement {
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0;
       margin-top: 6px;
       margin-bottom: 0;
@@ -516,7 +516,7 @@ export class AminaSCard extends LitElement {
 
     @media (max-width: 420px) {
       .metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
   `;
@@ -727,6 +727,7 @@ export class AminaSCard extends LitElement {
     const voltage = this.getNumberValue(this.config.voltage_entity);
     const linkquality = this.getNumberValue(this.config.linkquality_entity);
     const voltageIcon = this.getEntityIcon(this.config.voltage_entity) || "mdi:sine-wave";
+    const chargeLimitIcon = this.getEntityIcon(this.config.charge_limit_entity) || "mdi:ev-station";
     const linkqualityIcon = this.getEntityIcon(this.config.linkquality_entity) || "mdi:signal";
     const linkqualityUnit = this.getEntityUnit(this.config.linkquality_entity) || "";
     const { mainStatus, statusClass, secondary, charging, connected, alarmActive, derated, alarmText } = this.getStatusMeta();
@@ -761,6 +762,10 @@ export class AminaSCard extends LitElement {
                 <span class="telemetry-value">${this.formatNumber(voltage, 1)} V</span>
                 <ha-icon class="telemetry-icon" .icon=${voltageIcon}></ha-icon>
               </div>
+              <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.charge_limit_entity)} style="cursor:pointer;">
+                <span class="telemetry-value">Max ${this.formatNumber(chargeLimit, 0)} A</span>
+                <ha-icon class="telemetry-icon" .icon=${chargeLimitIcon}></ha-icon>
+              </div>
               <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.linkquality_entity)} style="cursor:pointer;">
                 <span class="telemetry-value">${this.formatNumber(linkquality, 0)}${linkqualityUnit ? ` ${linkqualityUnit}` : ""}</span>
                 <ha-icon class="telemetry-icon" .icon=${linkqualityIcon}></ha-icon>
@@ -769,10 +774,6 @@ export class AminaSCard extends LitElement {
           </div>
 
           <div class="metrics">
-            <div class="metric" @click=${() => this.showMoreInfo(this.config.charge_limit_entity)} style="cursor:pointer;">
-              <div class="metric-label">Charge limit</div>
-              <div class="metric-value">${this.formatNumber(chargeLimit, 0)} A</div>
-            </div>
             <div class="metric" @click=${() => this.showMoreInfo(this.config.power_entity)} style="cursor:pointer;">
               <div class="metric-label">Power</div>
               <div class="metric-value">${this.formatNumber(power / 1000, 1)} kW</div>
