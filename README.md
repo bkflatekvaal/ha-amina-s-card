@@ -76,9 +76,9 @@ The screenshots below show the card in dark and light Home Assistant themes.
 
 ### Light theme
 
-| Connected | Charging |
-| --- | --- |
-| ![Amina S Card connected in light theme](screenshots/light-connected.png) | ![Amina S Card charging in light theme](screenshots/light-charging.png) |
+| Connected | Charging | Not connected |
+| --- | --- | --- |
+| ![Amina S Card connected in light theme](screenshots/light-connected.png) | ![Amina S Card charging in light theme](screenshots/light-charging.png) | ![Amina S Card not connected in light theme](screenshots/light-not-connected.png) |
 
 ### Configuration editor
 
