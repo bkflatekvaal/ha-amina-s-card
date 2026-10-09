@@ -11,7 +11,7 @@ export function getEntityDefaults(statusEntity: string, states: Record<string, u
     entityIds.find((entityId) => entityId in states) ?? entityIds[0];
 
   return {
-    power_entity: `sensor.${baseName}_power`,
+    power_entity: `sensor.${baseName}_total_active_power`,
     current_entity: `sensor.${baseName}_current`,
     voltage_entity: `sensor.${baseName}_voltage`,
     linkquality_entity: choose(`sensor.${baseName}_linkquality`, `sensor.${baseName}_lqi`),

@@ -1,6 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { getEntityDefaults } from "./entity-defaults";
+import { getPhaseTelemetry } from "./phase-telemetry";
 
 interface AminaCardConfig {
   title?: string;
@@ -311,9 +312,9 @@ export class AminaSCard extends LitElement {
   public get config(): AminaCardConfig | undefined {
     if (!this._config) return undefined;
     return {
-      title: "Amina S Charger",
       ...getEntityDefaults(this._config.status_entity, this.hass?.states),
       ...this._config,
+      title: this.getTitle(),
     };
   }
 
@@ -540,8 +541,24 @@ export class AminaSCard extends LitElement {
 
   private getNumberValue(entityId?: string): number {
     const state = this.getEntity(entityId)?.state;
+    if (state == null || (typeof state === "string" && !state.trim())) return NaN;
     const parsed = Number(state);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  private getTitle(): string {
+    const title = this._config?.title?.trim();
+    if (title) return title;
+    const statusEntity = this._config?.status_entity;
+    const deviceId = this.hass?.entities?.[statusEntity]?.device_id;
+    const device = this.hass?.devices?.[deviceId];
+    return device?.name_by_user || device?.name
+      || this.getEntity(statusEntity)?.attributes?.friendly_name
+      || statusEntity || "";
+  }
+
+  private formatReading(value: number, digits: number, unit: string): string {
+    return Number.isFinite(value) ? `${this.formatNumber(value, digits)}${unit ? ` ${unit}` : ""}` : "-";
   }
 
   private getBooleanValue(entityId?: string): boolean {
@@ -680,10 +697,31 @@ export class AminaSCard extends LitElement {
 
     const chargeLimit = this.getNumberValue(this.config.charge_limit_entity);
 
-    const power = this.getNumberValue(this.config.power_entity);
-    const current = this.getNumberValue(this.config.current_entity);
-    const voltage = this.getNumberValue(this.config.voltage_entity);
+    const defaults = getEntityDefaults(this.config.status_entity);
+    const phaseValues = (entityId?: string) => [
+      this.getNumberValue(entityId),
+      this.getNumberValue(entityId ? `${entityId}_phase_b` : undefined),
+      this.getNumberValue(entityId ? `${entityId}_phase_c` : undefined),
+    ];
+    const phasePowerEntity = defaults.power_entity?.replace(/_total_active_power$/, "_power");
+    const phaseTelemetry = getPhaseTelemetry(
+      this.getStatusMeta().charging,
+      phaseValues(phasePowerEntity),
+      phaseValues(this.config.current_entity),
+      phaseValues(this.config.voltage_entity),
+    );
+    const powerEntity = this.config.power_entity;
+    const powerInKw = this.getEntityUnit(powerEntity) === "kW"
+      || (!this.getEntityUnit(powerEntity) && powerEntity === defaults.power_entity);
+    const powerKw = this.getNumberValue(powerEntity) / (powerInKw ? 1 : 1000);
+    const currentEntities = phaseTelemetry.threePhase
+      ? [this.config.current_entity, `${this.config.current_entity}_phase_b`, `${this.config.current_entity}_phase_c`]
+      : [this.config.current_entity];
+    const voltage = phaseTelemetry.voltage;
+    const voltagePrefix = phaseTelemetry.threePhaseVoltage ? "3p " : "";
     const linkquality = this.getNumberValue(this.config.linkquality_entity);
+    const showLinkquality = Boolean(this.getEntity(this.config.linkquality_entity))
+      && !this.hass.entities?.[this.config.linkquality_entity]?.disabled_by;
     const voltageIcon = this.getEntityIcon(this.config.voltage_entity) || "mdi:sine-wave";
     const chargeLimitIcon = this.getEntityIcon(this.config.charge_limit_entity) || "mdi:ev-station";
     const linkqualityIcon = this.getEntityIcon(this.config.linkquality_entity) || "mdi:signal";
@@ -717,32 +755,36 @@ export class AminaSCard extends LitElement {
             </div>
             <div class="top-right">
               <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.voltage_entity)} style="cursor:pointer;">
-                <span class="telemetry-value">${this.formatNumber(voltage, 1)} V</span>
+                <span class="telemetry-value">${voltagePrefix}${this.formatReading(voltage, 1, "V")}</span>
                 <ha-icon class="telemetry-icon" .icon=${voltageIcon}></ha-icon>
               </div>
               <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.charge_limit_entity)} style="cursor:pointer;">
-                <span class="telemetry-value">Max ${this.formatNumber(chargeLimit, 0)} A</span>
+                <span class="telemetry-value">Max ${this.formatReading(chargeLimit, 0, "A")}</span>
                 <ha-icon class="telemetry-icon" .icon=${chargeLimitIcon}></ha-icon>
               </div>
-              <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.linkquality_entity)} style="cursor:pointer;">
-                <span class="telemetry-value">${this.formatNumber(linkquality, 0)}${linkqualityUnit ? ` ${linkqualityUnit}` : ""}</span>
+              ${showLinkquality ? html`<div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.linkquality_entity)} style="cursor:pointer;">
+                <span class="telemetry-value">${this.formatReading(linkquality, 0, linkqualityUnit)}</span>
                 <ha-icon class="telemetry-icon" .icon=${linkqualityIcon}></ha-icon>
-              </div>
+              </div>` : ""}
             </div>
           </div>
 
           <div class="metrics">
-            <div class="metric" @click=${() => this.showMoreInfo(this.config.power_entity)} style="cursor:pointer;">
+            <div class="metric" @click=${() => this.showMoreInfo(powerEntity)} style="cursor:pointer;">
               <div class="metric-label">Power</div>
-              <div class="metric-value">${this.formatNumber(power / 1000, 1)} kW</div>
+              <div class="metric-value">${this.formatReading(powerKw, 1, "kW")}</div>
             </div>
-            <div class="metric" @click=${() => this.showMoreInfo(this.config.current_entity)} style="cursor:pointer;">
+            <div class="metric">
               <div class="metric-label">Current</div>
-              <div class="metric-value">${this.formatNumber(current, 1)} A</div>
+              ${currentEntities.map((entityId, index) => html`
+                <div class="metric-value" @click=${() => this.showMoreInfo(entityId)} style="cursor:pointer;">
+                  ${currentEntities.length > 1 ? `${["A", "B", "C"][index]}: ` : ""}${this.formatReading(this.getNumberValue(entityId), 1, "A")}
+                </div>
+              `)}
             </div>
             <div class="metric" @click=${() => this.showMoreInfo(this.config.energy_entity)} style="cursor:pointer;">
               <div class="metric-label">Session</div>
-              <div class="metric-value">${this.formatNumber(displayEnergy, 2)} kWh</div>
+              <div class="metric-value">${this.formatReading(displayEnergy, 2, "kWh")}</div>
             </div>
           </div>
         </div>
@@ -756,7 +798,6 @@ export class AminaSCard extends LitElement {
 
   static getStubConfig() {
     return {
-      title: "Amina S Charger",
       status_entity: "sensor.amina_s_ev_status",
       advanced: false,
     };

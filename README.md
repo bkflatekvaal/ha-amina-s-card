@@ -4,6 +4,8 @@ A compact Home Assistant Lovelace card for Amina S EV chargers exposed through Z
 
 The card uses the real Amina S entities exposed by Home Assistant. It does not require template sensors or helper entities.
 
+Tested and verified with Zigbee2MQTT and ZHA, including multiple chargers on the same Home Assistant system with a separate card for each charger.
+
 ## Installation
 
 ### HACS
@@ -31,6 +33,14 @@ Then add the card to a dashboard.
 
 ## Recent changes
 
+### v1.0.4
+
+- Default power to the device's total active power entity.
+- Added experimental three-phase detection, separate A/B/C current readings, and averaged voltage with a `3p` prefix.
+- Derive phase B/C current and voltage entities from the selected entities, including manual overrides.
+- Use the device name as the default heading, hide disabled or missing link quality, and show `-` for missing readings.
+- Documented manual LQI enablement for both integrations and verification with multiple chargers.
+
 ### v1.0.3
 
 - Added automatic lookup for ZHA LQI and charge-current-limit entity names.
@@ -49,6 +59,10 @@ See [changelog.md](changelog.md) for the release history.
 ## Configuration
 
 Only `status_entity` is required. The card derives the related entity IDs from its name. For example, `sensor.amina_s_ev_status` derives the Amina S entities using the `amina_s` base name.
+
+The heading uses the device name associated with the selected status entity, preferring a name you have assigned in Home Assistant. Set `title` to override it, or leave the title blank to use the device name. If device information is unavailable, the status entity's friendly name or entity ID is shown instead. Each card resolves its own charger independently.
+
+Missing, unknown, unavailable, or invalid numeric readings display `-`; actual zero readings still display zero. The link-quality row is hidden when its entity is disabled or absent.
 
 ```yaml
 type: custom:amina-s-card
@@ -73,7 +87,7 @@ ZHA exposes only limited Amina S functionality without a custom quirk. Install t
 
 After installing the quirk, recreate the entity IDs using Home Assistant's **Recreate entity IDs** action on the device page, then check the resulting IDs and select the new EV status entity in the card. Existing card overrides and automations may need their entity references updated. Some card entities may still need to be assigned manually under **Optional override**, especially the charger switch and thermal derating sensor.
 
-On the charger's ZHA device page, find **LQI** under **Diagnostics**, open its entity settings, and enable it manually. Its usual entity ID is `sensor.<name>_lqi`. The ZHA charge-limit entity is normally `number.<name>_charge_current_limit`.
+LQI/link quality must be enabled manually for **both Zigbee2MQTT and ZHA**. On the charger's device page in Home Assistant, find the link-quality entity under **Diagnostics**, open its entity settings, and enable it. Its usual entity ID is `sensor.<name>_linkquality` for Zigbee2MQTT or `sensor.<name>_lqi` for ZHA. The card hides this row until the entity is enabled and available in Home Assistant's states. The ZHA charge-limit entity is normally `number.<name>_charge_current_limit`.
 
 The card checks for existing entities with the following names, using the base name derived from `status_entity`:
 
@@ -96,7 +110,17 @@ charge_limit_entity: number.amina_s_charge_current_limit
 
 This card has currently only been tested with single-phase charging. Three-phase charging has not yet been validated, so the way aggregate power, current, voltage, and session energy are represented may require adjustment.
 
-The card currently displays the selected entities directly. It does not calculate a sum across phase-specific entities. If your Zigbee2MQTT device exposes separate phase entities, use the optional overrides to select the appropriate aggregate entities where available, and treat phase-specific display as experimental until tested.
+For Zigbee2MQTT's standard entity names, the card checks `sensor.<name>_power`, `_power_phase_b`, and `_power_phase_c` while the charger status is **Charging**. Power greater than zero on more than one phase is treated as three-phase charging; otherwise the card uses the single active phase (or the main phase when no phase is delivering power).
+
+Power always defaults to `sensor.<name>_total_active_power`, reported by Zigbee2MQTT in kW, regardless of charging mode. Missing total power displays `-`; the card does not sum the individual phase powers. For installations with a different power entity, including ZHA, select it under **Optional override**. Power overrides in W are converted to kW.
+
+Single-phase charging shows only `sensor.<name>_current`. Three-phase charging shows `_current`, `_current_phase_b`, and `_current_phase_c` on separate lines labeled **A**, **B**, and **C** under **Current**. Clicking a current line opens that phase's entity. Missing phase readings show `-` independently.
+
+If all three voltage readings (`_voltage`, `_voltage_phase_b`, and `_voltage_phase_c`) are positive and available during three-phase charging, the card shows their average prefixed with **3p**, for example `3p 230.0 V`. Single-phase charging shows only the active phase's voltage without the prefix. Clicking voltage always opens the main configured voltage entity.
+
+Current and voltage phase entities are derived from the selected entity, including manual overrides, by appending `_phase_b` and `_phase_c`. For example, overriding current to `sensor.garage_amperage` also selects `sensor.garage_amperage_phase_b` and `sensor.garage_amperage_phase_c`. No separate phase overrides are needed. Voltage clicks still open the selected main voltage entity, and current lines open their respective entities.
+
+Missing readings required for the voltage average display `-`, and missing current phase readings show `-` on their own lines. Power overrides are displayed directly. Phase detection still uses the standard power phase names derived from the status entity. Phase detection and voltage averaging remain experimental until tested on a three-phase installation.
 
 ## Screenshots
 
