@@ -14,6 +14,28 @@ for (const name of ['entity-defaults', 'phase-telemetry', 'amina-s-card']) {
   modules[name] = exports;
 }
 const { getPhaseTelemetry } = modules['phase-telemetry'];
+test('offline status hides controls and overrides stale secondary text; recovery restores controls', async () => {
+  const card = makeCard();
+  card.hass.states['sensor.custom_substatus'] = { state: 'Vehicle connected', attributes: {} };
+  card.setConfig({ status_entity: 'sensor.garage_ev_status', sub_status_entity: 'sensor.custom_substatus' });
+  let serviceCalls = 0;
+  card.hass.callService = async () => { serviceCalls++; };
+  for (const state of ['unavailable', 'unknown', null]) {
+    if (state === null) delete card.hass.states['sensor.garage_ev_status'];
+    else card.hass.states['sensor.garage_ev_status'].state = state;
+    const output = card.render();
+    assert.ok(output.includes('Waiting for charger to come online'));
+    assert.ok(!output.includes('Waiting for vehicle'));
+    assert.ok(!output.includes('class="action-toggle"'));
+    await card.toggleCharger();
+  }
+  assert.equal(serviceCalls, 0);
+  card.hass.states['sensor.garage_ev_status'] = { state: 'EV connected', attributes: {} };
+  assert.ok(card.render().includes('class="action-toggle"'));
+  assert.ok(!card.render().includes('Waiting for charger to come online'));
+  await card.toggleCharger();
+  assert.equal(serviceCalls, 1);
+});
 function makeCard(charging = true) {
   const card = new modules['amina-s-card'].AminaSCard();
   card.setConfig({ status_entity: 'sensor.garage_ev_status' });

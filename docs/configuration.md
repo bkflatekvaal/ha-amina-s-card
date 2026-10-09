@@ -50,6 +50,8 @@ The heading uses the status entity's device name, preferring the name you assign
 
 Missing, unknown, unavailable, blank, or invalid numeric readings display `-`. Actual zero readings remain visible.
 
+When the main status entity is unavailable, unknown, or missing, the Start/Stop button is hidden and the secondary text reads **Waiting for charger to come online**. Normal controls return when the status becomes available.
+
 Enable LQI/link quality manually in Home Assistant for both integrations. Open the charger's device page, find the diagnostic entity, and enable it in the entity settings. Disabled or absent link quality hides the row. An enabled entity with an unknown or unavailable reading shows `-`.
 
 See [ZHA setup](zha-setup.md) for quirk installation and entity recreation.

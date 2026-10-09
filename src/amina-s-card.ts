@@ -644,6 +644,7 @@ export class AminaSCard extends LitElement {
   }
 
   private async toggleCharger() {
+    if (!this.getStatusMeta().available) return;
     const entityId = this.config.charger_entity;
     if (!entityId) return;
 
@@ -671,6 +672,8 @@ export class AminaSCard extends LitElement {
     const status = this.normaliseStatus(this.getState(this.config.status_entity));
     const subStatus = this.getEntity(this.config.sub_status_entity)?.state;
     const normalized = status.toLowerCase();
+    const available = Boolean(this.getEntity(this.config.status_entity))
+      && !["unavailable", "unknown", "-", ""].includes(normalized);
     const charging = normalized === "charging";
     const connected = normalized === "ev connected";
     const alarmActive = this.getBooleanValue(this.config.alarm_entity);
@@ -681,7 +684,10 @@ export class AminaSCard extends LitElement {
     let mainStatus = status;
     let statusClass = "status-connected";
 
-    if (normalized === "charging") {
+    if (!available) {
+      mainStatus = normalized === "unavailable" ? "Unavailable" : "Unknown";
+      statusClass = "status-warning";
+    } else if (normalized === "charging") {
       mainStatus = "Charging";
       statusClass = "status-charging";
     } else if (normalized === "ev connected") {
@@ -695,7 +701,9 @@ export class AminaSCard extends LitElement {
       statusClass = "status-warning";
     }
 
-    const secondary = subStatus
+    const secondary = !available
+      ? "Waiting for charger to come online"
+      : subStatus
       ? String(subStatus)
       : hasAlarm
         ? alarmText
@@ -705,7 +713,7 @@ export class AminaSCard extends LitElement {
             ? "Vehicle connected"
             : "Waiting for vehicle";
 
-    return { status, connected, charging, alarmActive, derated, alarmText, mainStatus, statusClass, secondary };
+    return { status, available, connected, charging, alarmActive, derated, alarmText, mainStatus, statusClass, secondary };
   }
 
   render() {
@@ -742,7 +750,7 @@ export class AminaSCard extends LitElement {
     const chargeLimitIcon = this.getEntityIcon(this.config.charge_limit_entity) || "mdi:ev-station";
     const linkqualityIcon = this.getEntityIcon(this.config.linkquality_entity) || "mdi:signal";
     const linkqualityUnit = this.getEntityUnit(this.config.linkquality_entity) || "";
-    const { mainStatus, statusClass, secondary, charging, connected, alarmActive, derated, alarmText } = this.getStatusMeta();
+    const { mainStatus, statusClass, secondary, available, charging, connected, alarmActive, derated, alarmText } = this.getStatusMeta();
     const isCharging = charging;
     const isConnected = connected;
     const sessionEnergy = this.getNumberValue(this.config.energy_entity);
@@ -765,9 +773,9 @@ export class AminaSCard extends LitElement {
             <div class="status-wrap">
               <div class="status-main ${statusClass}" @click=${() => this.showMoreInfo(this.config.status_entity)} style="cursor:pointer;">${mainStatus}</div>
               <div class="status-secondary ${alarmActive || derated ? "status-warning" : ""}">${secondary}</div>
-              <button class="action-toggle" @click=${() => this.toggleCharger()} aria-label="${chargerOn ? "Stop charging" : "Start charging"}">
+              ${available ? html`<button class="action-toggle" @click=${() => this.toggleCharger()} aria-label="${chargerOn ? "Stop charging" : "Start charging"}">
                 ${chargerOn ? "Stop ■" : "Start ▶"}
-              </button>
+              </button>` : ""}
             </div>
             <div class="top-right">
               <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.voltage_entity)} style="cursor:pointer;">

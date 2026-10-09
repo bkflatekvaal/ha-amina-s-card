@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Hide Start/Stop controls when the main status entity is unavailable, unknown, or missing, and show **Waiting for charger to come online** instead of vehicle-waiting text.
+
 ## 1.0.6 — 2026-10-09
 
 - Detect three-phase charging from positive current on more than one phase, using the selected current entity and its derived phase B/C companions. Remove dependency on individual phase power sensors.
