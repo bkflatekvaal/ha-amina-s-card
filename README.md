@@ -6,13 +6,19 @@ Verified with both integrations and multiple chargers using separate cards. Thre
 
 ## Installation
 
-### HACS
+### HACS custom repository
 
-Find **Amina S Card** in HACS and download it. If it is not listed, add this repository through **Custom repositories** as a dashboard repository, then download it. See [HACS instructions](https://www.hacs.xyz/docs/faq/custom_repositories/).
+The card is not yet listed in HACS. Add it manually as a custom repository:
 
-Refresh Home Assistant, then add **Amina S Card** from the dashboard card picker.
+1. Open **HACS**, then open the **⋮** menu and select **Custom repositories**.
+2. Enter `https://github.com/bkflatekvaal/ha-amina-s-card` as the repository URL.
+3. Select **Dashboard** as the type and click **Add**.
+4. Find **Amina S Card** in HACS and select **Download**.
+5. Refresh Home Assistant, then add **Amina S Card** from the dashboard card picker.
 
-### Manual
+See [HACS custom repository instructions](https://www.hacs.xyz/docs/faq/custom_repositories/) for more detail.
+
+### Manual file installation
 
 Copy [dist/amina-s-card.js](dist/amina-s-card.js) to `/config/www/amina-s-card/amina-s-card.js` and add this dashboard resource:
 
