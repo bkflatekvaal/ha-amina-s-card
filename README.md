@@ -33,6 +33,12 @@ Then add the card to a dashboard.
 
 ## Recent changes
 
+### v1.0.5
+
+- Detect ZHA or MQTT from each status entity's registry entry, defaulting to MQTT names when detection is unavailable.
+- Select ZHA's total power entity automatically and preserve manual overrides.
+- Show averaged three-phase voltage with `3p` while idle when all three voltages are available.
+
 ### v1.0.4
 
 - Default power to the device's total active power entity.
@@ -89,14 +95,15 @@ After installing the quirk, recreate the entity IDs using Home Assistant's **Rec
 
 LQI/link quality must be enabled manually for **both Zigbee2MQTT and ZHA**. On the charger's device page in Home Assistant, find the link-quality entity under **Diagnostics**, open its entity settings, and enable it. Its usual entity ID is `sensor.<name>_linkquality` for Zigbee2MQTT or `sensor.<name>_lqi` for ZHA. The card hides this row until the entity is enabled and available in Home Assistant's states. The ZHA charge-limit entity is normally `number.<name>_charge_current_limit`.
 
-The card checks for existing entities with the following names, using the base name derived from `status_entity`:
+The card detects the integration from the selected status entity's Home Assistant entity registry entry, then uses the following names with the base name derived from `status_entity`:
 
 | Card field | Zigbee2MQTT | ZHA |
 | --- | --- | --- |
+| Total power | `sensor.<name>_total_active_power` | `sensor.<name>_total_power` |
 | Link quality | `sensor.<name>_linkquality` | `sensor.<name>_lqi` |
 | Charge limit | `number.<name>_charge_limit` | `number.<name>_charge_current_limit` |
 
-This automatically selects compatible entity names rather than definitively identifying the integration. If both names exist, the Zigbee2MQTT name takes precedence. Explicit overrides always take precedence over automatic lookup. Renamed entities may require manual overrides, for example:
+The `zha` platform selects ZHA names. The `mqtt` platform is treated as Zigbee2MQTT and selects its names. If neither is detected, or registry access is unavailable, the card uses Zigbee2MQTT/MQTT names. Detection runs independently for each card's status entity, so ZHA and MQTT chargers can coexist. Explicit overrides always take precedence. Renamed entities may require manual overrides, for example:
 
 ```yaml
 type: custom:amina-s-card
@@ -112,11 +119,11 @@ This card has currently only been tested with single-phase charging. Three-phase
 
 For Zigbee2MQTT's standard entity names, the card checks `sensor.<name>_power`, `_power_phase_b`, and `_power_phase_c` while the charger status is **Charging**. Power greater than zero on more than one phase is treated as three-phase charging; otherwise the card uses the single active phase (or the main phase when no phase is delivering power).
 
-Power always defaults to `sensor.<name>_total_active_power`, reported by Zigbee2MQTT in kW, regardless of charging mode. Missing total power displays `-`; the card does not sum the individual phase powers. For installations with a different power entity, including ZHA, select it under **Optional override**. Power overrides in W are converted to kW.
+Power uses `sensor.<name>_total_active_power` for MQTT/Zigbee2MQTT or `sensor.<name>_total_power` for detected ZHA devices, regardless of charging mode. Readings in W are converted to kW; readings already in kW are displayed directly. Missing total power displays `-`; the card does not sum the individual phase powers. For installations with a different power entity, select it under **Optional override**.
 
 Single-phase charging shows only `sensor.<name>_current`. Three-phase charging shows `_current`, `_current_phase_b`, and `_current_phase_c` on separate lines labeled **A**, **B**, and **C** under **Current**. Clicking a current line opens that phase's entity. Missing phase readings show `-` independently.
 
-If all three voltage readings (`_voltage`, `_voltage_phase_b`, and `_voltage_phase_c`) are positive and available during three-phase charging, the card shows their average prefixed with **3p**, for example `3p 230.0 V`. Single-phase charging shows only the active phase's voltage without the prefix. Clicking voltage always opens the main configured voltage entity.
+If all three voltage readings (`_voltage`, `_voltage_phase_b`, and `_voltage_phase_c`) are positive and available during three-phase charging or while not charging, the card shows their average prefixed with **3p**, for example `3p 230.0 V`. Single-phase charging shows only the active phase's voltage without the prefix. While not charging, missing or invalid extra phase voltages cause the card to show only the main voltage. Clicking voltage always opens the main configured voltage entity.
 
 Current and voltage phase entities are derived from the selected entity, including manual overrides, by appending `_phase_b` and `_phase_c`. For example, overriding current to `sensor.garage_amperage` also selects `sensor.garage_amperage_phase_b` and `sensor.garage_amperage_phase_c`. No separate phase overrides are needed. Voltage clicks still open the selected main voltage entity, and current lines open their respective entities.
 

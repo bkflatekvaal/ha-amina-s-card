@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 — 2026-10-09
+
+- Detect each status entity's integration through Home Assistant's entity registry: ZHA selects ZHA names, MQTT selects Zigbee2MQTT names, and unknown integrations or unavailable registry access fall back to MQTT names.
+- Use ZHA's `_total_power` or Zigbee2MQTT's `_total_active_power` for power, converting W readings to kW and preserving manual overrides.
+- Cache registry lookups across cards while keeping defaults independent per charger; apply detected defaults to the configuration editor as well.
+- Show averaged voltage with a `3p` prefix while idle when all three phase voltages are valid; retain the active phase voltage during single-phase charging.
+- Extend automated coverage for integration detection, fallback behavior, total power units, and idle voltage display.
+
 ## 1.0.4 — 2026-10-09
 
 - Detect three-phase charging from power delivery on more than one phase while charging, using standard Zigbee2MQTT entity names.

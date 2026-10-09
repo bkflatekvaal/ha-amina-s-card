@@ -43,6 +43,56 @@ test('single-phase renders only main current and always uses total power', () =>
   assert.ok(output.includes('231.0 V'));
   assert.ok(output.includes('7.5 kW'));
 });
+test('ZHA total power is selected automatically and converts W to kW', () => {
+  const card = makeCard();
+  card.hass.entities = { 'sensor.garage_ev_status': { platform: 'zha' } };
+  delete card.hass.states['sensor.garage_total_active_power'];
+  card.hass.states['sensor.garage_total_power'] = { state: '7500', attributes: { unit_of_measurement: 'W' } };
+  assert.equal(card.config.power_entity, 'sensor.garage_total_power');
+  assert.ok(card.render().includes('7.5 kW'));
+  assert.ok(card.render().includes('3p 230.0 V'));
+  card.hass.states['sensor.garage_total_power'] = { state: '7.5', attributes: { unit_of_measurement: 'kW' } };
+  assert.ok(card.render().includes('7.5 kW'));
+});
+test('MQTT defaults win when integration is unknown even if ZHA names exist', () => {
+  const card = makeCard();
+  card.hass.states['sensor.garage_total_power'] = { state: '1000', attributes: { unit_of_measurement: 'W' } };
+  assert.equal(card.config.power_entity, 'sensor.garage_total_active_power');
+  assert.ok(card.render().includes('7.5 kW'));
+});
+test('integration detection selects defaults per status entity and honors overrides', () => {
+  const card = makeCard();
+  card.hass.entities = { 'sensor.garage_ev_status': { platform: 'zha' }, 'sensor.driveway_ev_status': { platform: 'mqtt' } };
+  assert.equal(card.config.power_entity, 'sensor.garage_total_power');
+  assert.equal(card.config.linkquality_entity, 'sensor.garage_lqi');
+  assert.equal(card.config.charge_limit_entity, 'number.garage_charge_current_limit');
+  card.setConfig({ status_entity: 'sensor.driveway_ev_status' });
+  assert.equal(card.config.power_entity, 'sensor.driveway_total_active_power');
+  card.setConfig({ status_entity: 'sensor.garage_ev_status', power_entity: 'sensor.custom_total' });
+  assert.equal(card.config.power_entity, 'sensor.custom_total');
+});
+test('registry lookup is cached across cards and resolves ZHA asynchronously', async () => {
+  const { loadIntegration, getIntegration } = modules['entity-defaults'];
+  let calls = 0;
+  const connection = {};
+  const hass = { connection, callWS: async (message) => {
+    calls++;
+    assert.equal(message.type, 'config/entity_registry/get');
+    assert.equal(message.entity_id, 'sensor.garage_ev_status');
+    return { platform: 'zha' };
+  } };
+  assert.equal(getIntegration('sensor.garage_ev_status', hass), 'mqtt');
+  await Promise.all([loadIntegration('sensor.garage_ev_status', hass), loadIntegration('sensor.garage_ev_status', { ...hass })]);
+  assert.equal(calls, 1);
+  assert.equal(getIntegration('sensor.garage_ev_status', hass), 'zha');
+});
+test('failed registry access and other platforms fall back to MQTT defaults', async () => {
+  const { loadIntegration, getIntegration } = modules['entity-defaults'];
+  const hass = { connection: {}, callWS: async () => { throw new Error('Access unavailable'); } };
+  await loadIntegration('sensor.garage_ev_status', hass);
+  assert.equal(getIntegration('sensor.garage_ev_status', hass), 'mqtt');
+  assert.equal(getIntegration('sensor.garage_ev_status', { entities: { 'sensor.garage_ev_status': { platform: 'template' } } }), 'mqtt');
+});
 test('missing total power shows dash instead of summing phase powers', () => {
   const card = makeCard();
   delete card.hass.states['sensor.garage_total_active_power'];
@@ -92,7 +142,21 @@ test('missing override phase entities show dashes rather than using default phas
 test('more than one powered phase is three-phase; idle ignores stale phase powers', () => {
   assert.equal(getPhaseTelemetry(true, [2300, 2300, 0], [10, 11, 0], [230, 231, 232]).threePhase, true);
   const output = makeCard(false).render();
-  assert.ok(!output.includes('3p ')); assert.ok(!output.includes('B: ')); assert.ok(output.includes('7.5 kW'));
+  assert.ok(output.includes('3p 230.0 V')); assert.ok(!output.includes('B: ')); assert.ok(output.includes('7.5 kW'));
+});
+test('idle voltage uses three available phases even with no power delivery', () => {
+  const card = makeCard(false);
+  for (const suffix of ['', '_phase_b', '_phase_c']) card.hass.states[`sensor.garage_power${suffix}`].state = '0';
+  assert.ok(card.render().includes('3p 230.0 V'));
+});
+test('idle voltage falls back to the main phase when extra voltages are invalid', () => {
+  for (const state of ['0', 'unavailable', 'unknown']) {
+    const card = makeCard(false);
+    card.hass.states['sensor.garage_voltage_phase_b'].state = state;
+    const output = card.render();
+    assert.ok(output.includes('230.0 V'));
+    assert.ok(!output.includes('3p '));
+  }
 });
 test('missing or zero voltage cannot produce a misleading average', () => {
   for (const value of [NaN, 0]) {

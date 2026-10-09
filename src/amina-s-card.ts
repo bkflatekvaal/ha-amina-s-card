@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { getEntityDefaults } from "./entity-defaults";
+import { getEntityDefaults, getIntegration, loadIntegration } from "./entity-defaults";
 import { getPhaseTelemetry } from "./phase-telemetry";
 
 interface AminaCardConfig {
@@ -28,6 +28,11 @@ class AminaCardConfigEditor extends HTMLElement {
 
   set hass(value: any) {
     this._hass = value;
+    const statusEntity = this._config.status_entity ?? "";
+    const integration = getIntegration(statusEntity, value);
+    void loadIntegration(statusEntity, value).then(() => {
+      if (this._config.status_entity === statusEntity && getIntegration(statusEntity, this.hass) !== integration) this.render();
+    });
     if (this.isConnected) {
       this.querySelectorAll("ha-entity-picker").forEach((picker: any) => {
         picker.hass = value;
@@ -42,6 +47,7 @@ class AminaCardConfigEditor extends HTMLElement {
   setConfig(config: Partial<AminaCardConfig>) {
     this._config = config || {};
     this.render();
+    if (this._hass) this.hass = this._hass;
   }
 
   private getEntityOptions(field: string) {
@@ -67,7 +73,7 @@ class AminaCardConfigEditor extends HTMLElement {
   }
 
   private getDefaultEntity(field: string): string | undefined {
-    const defaults = getEntityDefaults(this._config.status_entity ?? "", this.hass?.states);
+    const defaults = getEntityDefaults(this._config.status_entity ?? "", getIntegration(this._config.status_entity ?? "", this.hass));
     return defaults[field];
   }
 
@@ -240,7 +246,10 @@ class AminaCardConfigEditor extends HTMLElement {
       })
     );
 
-    if (changedKey === "status_entity") this.render();
+    if (changedKey === "status_entity") {
+      this.render();
+      if (this._hass) this.hass = this._hass;
+    }
   }
 
   render() {
@@ -312,10 +321,19 @@ export class AminaSCard extends LitElement {
   public get config(): AminaCardConfig | undefined {
     if (!this._config) return undefined;
     return {
-      ...getEntityDefaults(this._config.status_entity, this.hass?.states),
+      ...getEntityDefaults(this._config.status_entity, getIntegration(this._config.status_entity, this.hass)),
       ...this._config,
       title: this.getTitle(),
     };
+  }
+
+  protected willUpdate() {
+    const statusEntity = this._config?.status_entity;
+    if (!statusEntity) return;
+    const integration = getIntegration(statusEntity, this.hass);
+    void loadIntegration(statusEntity, this.hass).then(() => {
+      if (this._config?.status_entity === statusEntity && getIntegration(statusEntity, this.hass) !== integration) this.requestUpdate();
+    });
   }
 
   static styles = css`
@@ -697,13 +715,13 @@ export class AminaSCard extends LitElement {
 
     const chargeLimit = this.getNumberValue(this.config.charge_limit_entity);
 
-    const defaults = getEntityDefaults(this.config.status_entity);
+    const defaults = getEntityDefaults(this.config.status_entity, getIntegration(this.config.status_entity, this.hass));
     const phaseValues = (entityId?: string) => [
       this.getNumberValue(entityId),
       this.getNumberValue(entityId ? `${entityId}_phase_b` : undefined),
       this.getNumberValue(entityId ? `${entityId}_phase_c` : undefined),
     ];
-    const phasePowerEntity = defaults.power_entity?.replace(/_total_active_power$/, "_power");
+    const phasePowerEntity = defaults.power_entity?.replace(/_total_(active_)?power$/, "_power");
     const phaseTelemetry = getPhaseTelemetry(
       this.getStatusMeta().charging,
       phaseValues(phasePowerEntity),
@@ -712,7 +730,7 @@ export class AminaSCard extends LitElement {
     );
     const powerEntity = this.config.power_entity;
     const powerInKw = this.getEntityUnit(powerEntity) === "kW"
-      || (!this.getEntityUnit(powerEntity) && powerEntity === defaults.power_entity);
+      || (!this.getEntityUnit(powerEntity) && powerEntity?.endsWith("_total_active_power"));
     const powerKw = this.getNumberValue(powerEntity) / (powerInKw ? 1 : 1000);
     const currentEntities = phaseTelemetry.threePhase
       ? [this.config.current_entity, `${this.config.current_entity}_phase_b`, `${this.config.current_entity}_phase_c`]
