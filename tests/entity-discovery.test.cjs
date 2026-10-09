@@ -200,3 +200,88 @@ test('same-device entities from another config entry cannot win matching', () =>
   entries.push({ entity_id: 'sensor.other_total', device_id: 'one', platform: 'mqtt', config_entry_id: 'another-entry', original_name: 'Total active power' });
   assert.equal(api.getAutomaticEntities('sensor.one_status', hassWith(entries)).power_entity, 'sensor.one_watts');
 });
+
+
+test('frequent HA state updates reuse discovery, config and phases without registry traversal or async renders', async () => {
+  const api = setup(); let traversals = 0, requests = 0;
+  const original = hassWith([...fixture('one'), ...fixture('two', 'zha')]);
+  original.entities = new Proxy(original.entities, { ownKeys(target) { traversals++; return Reflect.ownKeys(target); } });
+  original.callWS = async message => { requests++; return message.type === 'config/entity_registry/list' ? [...fixture('one'), ...fixture('two', 'zha')] : []; };
+  const card = new api.Card(); card.hass = original; card.setConfig({ status_entity: 'sensor.one_status' }); card.willUpdate();
+  await api.loadIntegration('sensor.one_status', original);
+  await new Promise(resolve => setImmediate(resolve));
+  const config = card.config;
+  const phases = api.getPhaseEntities('sensor.one_status', original, 'current', config.current_entity, false);
+  const scans = traversals, updates = card.updates, calls = requests;
+  api.advance(120_000);
+  for (let i = 0; i < 2000; i++) {
+    card.hass = { ...original, states: { 'sensor.one_status': { state: 'Charging', attributes: {} }, 'sensor.one_amps': { state: String(i), attributes: {} } } };
+    card.willUpdate();
+    assert.equal(card.config, config);
+    assert.equal(api.getPhaseEntities('sensor.one_status', card.hass, 'current', config.current_entity, false), phases);
+    card.render();
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(traversals, scans);
+  assert.equal(requests, calls);
+  assert.equal(card.updates, updates);
+  card.setConfig({ status_entity: 'sensor.two_status', current_entity: 'sensor.manual' }); card.willUpdate();
+  assert.equal(card.config.power_entity, 'sensor.two_watts');
+  assert.equal(card.config.current_entity, 'sensor.manual');
+  card.setConfig({ status_entity: 'sensor.two_status' });
+  assert.equal(card.config.current_entity, 'sensor.two_amps');
+});
+
+test('registry collection replacements invalidate cached mappings and device titles', () => {
+  const api = setup(); const hass = hassWith(fixture('one'), [{ id: 'one', name: 'Old name' }]);
+  const card = new api.Card(); card.hass = hass; card.setConfig({ status_entity: 'sensor.one_status' });
+  assert.equal(card.config.power_entity, 'sensor.one_watts');
+  const entities = { ...hass.entities }; entities['sensor.renamed'] = { ...entities['sensor.one_watts'], entity_id: 'sensor.renamed' }; delete entities['sensor.one_watts'];
+  card.hass = { ...hass, entities, devices: { one: { id: 'one', name_by_user: 'New name' } } }; card.willUpdate();
+  assert.equal(card.config.power_entity, 'sensor.renamed');
+  assert.equal(card.config.title, 'New name');
+});
+
+test('registry events refresh one shared snapshot and do not cause circular updates', async () => {
+  const api = setup(); const events = {}; let requests = 0, entries = fixture('one');
+  const hass = { connection: { subscribeEvents(callback, type) { events[type] = callback; return Promise.resolve(() => {}); } }, states: {}, callWS: async message => { requests++; return message.type === 'config/entity_registry/list' ? entries : [{ id: 'one', name: 'Garage' }]; } };
+  const first = new api.Card(), second = new api.Card();
+  for (const card of [first, second]) { card.hass = hass; card.setConfig({ status_entity: 'sensor.one_status' }); card.willUpdate(); }
+  await api.loadIntegration('sensor.one_status', hass); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, 2);
+  entries = entries.map(entry => entry.entity_id === 'sensor.one_watts' ? { ...entry, entity_id: 'sensor.new_total' } : entry);
+  events.entity_registry_updated();
+  await api.loadIntegration('sensor.one_status', hass); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, 4);
+  for (const card of [first, second]) { assert.equal(card.config.power_entity, 'sensor.new_total'); card.willUpdate(); }
+  const updates = first.updates;
+  for (let i = 0; i < 100; i++) first.willUpdate();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(first.updates, updates); assert.equal(requests, 4);
+});
+
+
+test('state updates while discovery is pending register one completion per card', async () => {
+  const api = setup(); let finish, requests = 0;
+  const hass = { connection: {}, states: {}, callWS(message) { requests++; return message.type === 'config/entity_registry/list' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve([]); } };
+  const card = new api.Card(); card.hass = hass; card.setConfig({ status_entity: 'sensor.one_status' });
+  const initial = card.updates;
+  for (let i = 0; i < 1000; i++) { card.hass = { ...hass, states: {} }; card.willUpdate(); }
+  await Promise.resolve(); await Promise.resolve();
+  finish(fixture('one')); await api.loadIntegration('sensor.one_status', hass); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, 2); assert.equal(card.updates, initial + 1);
+  assert.equal(card.config.power_entity, 'sensor.one_watts');
+});
+
+test('editor state updates do not repeat discovery or rebuild the editor', async () => {
+  const api = setup(); const editor = new api.Editor(); let renders = 0, requests = 0;
+  editor.render = () => { renders++; };
+  const hass = { connection: {}, states: {}, callWS: async message => { requests++; return message.type === 'config/entity_registry/list' ? fixture('one') : []; } };
+  editor.setConfig({ status_entity: 'sensor.one_status' }); editor.hass = hass;
+  await api.loadIntegration('sensor.one_status', hass); await new Promise(resolve => setImmediate(resolve));
+  const count = renders;
+  for (let i = 0; i < 1000; i++) editor.hass = { ...hass, states: {} };
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(renders, count); assert.equal(requests, 2);
+  editor.disconnectedCallback();
+});

@@ -18,3 +18,5 @@ The editor tests use a small DOM stub supporting the elements, selectors, and ev
 GitHub Actions runs tests, type checking, and the production build on Node.js 24 with npm caching and `npm ci`. HACS compatibility runs in a separate job on pushes, pull requests, scheduled runs, and manual dispatches.
 
 Remaining manual checks include real Home Assistant picker behavior, browser rendering and accessibility, end-to-end service delivery, and live three-phase charging. HACS's action requires its hosted/container execution environment and is not exercised by `npm test`.
+
+Discovery performance regressions are checked with 2,000 state updates and renders using counted registry traversals and WebSocket requests. Additional tests cover 1,000 updates during a pending snapshot, editor updates, registry collection replacements, and event-driven refresh shared across cards. Normal state changes reuse cached charger mappings and phases even beyond the registry snapshot TTL; there is no scheduled polling. These are deterministic operation-count checks, not a browser CPU profile.

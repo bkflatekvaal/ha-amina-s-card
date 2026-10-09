@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 ? 2026-10-09
+
+- Fix the severe dashboard performance regression introduced with registry-based automatic entity discovery in v1.0.7.
+- Cache resolved entity mappings and phase entities per charger and connection, reuse resolved configuration, and avoid registry traversal and discovery-signature serialization on ordinary Home Assistant state updates.
+- Refresh shared registry snapshots when entity or device registry events arrive, invalidate mappings when registry collections change, and preserve charger switching, renamed entities, manual overrides, and multiple ZHA/Zigbee2MQTT chargers.
+- Prevent redundant discovery requests and accumulated asynchronous render callbacks; clean up subscriptions when cards and editors disconnect. Add no polling or timers.
+- Add regression coverage for frequent state updates, pending discovery, editor updates, registry replacements, and shared event-driven refresh. Across 2,000 simulated updates and renders, verify no additional registry traversal, WebSocket requests, or discovery-triggered updates.
+- Validate all 60 tests, TypeScript checks, and the production build; rebuild the distributed card bundle.
+
 ## 1.0.7 — 2026-10-09
 
 - Extend Node-based tests for charger service calls, switch states, alarms, thermal derating, status text, sensor values, editor events, asynchronous discovery, and isolation between chargers.

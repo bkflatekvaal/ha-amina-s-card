@@ -18,6 +18,16 @@ interface RegistryCache {
   devices: Record<string, any>;
   promise?: Promise<void>;
   expires: number;
+  revision: number;
+  entitySource?: object;
+  deviceSource?: object;
+  merged?: Record<string, RegistryEntity>;
+  resolved: Map<string, Record<string, string | undefined>>;
+  phases: Map<string, (string | undefined)[]>;
+  listeners: Set<() => void>;
+  watching?: boolean;
+  subscriptions: Set<() => void>;
+  refreshPending?: boolean;
   statusLookups: Map<string, Promise<void>>;
 }
 const registries = new WeakMap<object, RegistryCache>();
@@ -29,23 +39,76 @@ function cacheFor(hass: any): RegistryCache | undefined {
   if (!key || typeof key !== "object") return undefined;
   let cache = registries.get(key);
   if (!cache) {
-    cache = { entities: {}, devices: {}, expires: 0, statusLookups: new Map() };
+    cache = { entities: {}, devices: {}, expires: 0, revision: 0, statusLookups: new Map(), resolved: new Map(), phases: new Map(), listeners: new Set(), subscriptions: new Set() };
     registries.set(key, cache);
   }
   return cache;
 }
 
-function entityEntries(hass: any): Record<string, RegistryEntity> {
-  const cached = cacheFor(hass)?.entities ?? {};
-  const entries = { ...cached };
-  for (const [id, value] of Object.entries(hass?.entities ?? {})) {
-    entries[id] = { ...cached[id], ...(value as RegistryEntity), entity_id: id };
+function invalidate(cache: RegistryCache) {
+  cache.revision++;
+  cache.merged = undefined;
+  cache.resolved.clear();
+  cache.phases.clear();
+}
+
+/** HA registry collections change independently of the frequent states snapshots. */
+export function getDiscoveryRevision(hass: any): number {
+  const cache = cacheFor(hass);
+  if (!cache) return 0;
+  if (cache.entitySource !== hass?.entities || cache.deviceSource !== hass?.devices) {
+    cache.entitySource = hass?.entities;
+    cache.deviceSource = hass?.devices;
+    invalidate(cache);
   }
-  return entries;
+  return cache.revision;
+}
+
+export function observeDiscovery(hass: any, listener: () => void): () => void {
+  const cache = cacheFor(hass);
+  if (!cache) return () => {};
+  cache.listeners.add(listener);
+  if (!cache.watching && hass?.connection?.subscribeEvents) {
+    cache.watching = true;
+    for (const type of ["entity_registry_updated", "device_registry_updated"]) {
+      Promise.resolve(hass.connection.subscribeEvents(() => {
+        if (cache.promise) cache.refreshPending = true;
+        else {
+          cache.expires = 0;
+          cache.statusLookups.clear();
+          void loadIntegration("", hass);
+        }
+      }, type)).then((unsubscribe) => {
+        if (cache.listeners.size) cache.subscriptions.add(unsubscribe);
+        else unsubscribe();
+      }).catch(() => { /* Collection replacements still invalidate discovery. */ });
+    }
+  }
+  return () => {
+    cache.listeners.delete(listener);
+    if (!cache.listeners.size) {
+      for (const unsubscribe of cache.subscriptions) unsubscribe();
+      cache.subscriptions.clear();
+      cache.watching = false;
+    }
+  };
+}
+
+function entityEntries(hass: any): Record<string, RegistryEntity> {
+  getDiscoveryRevision(hass);
+  const cache = cacheFor(hass);
+  if (!cache) return {};
+  if (!cache.merged) {
+    cache.merged = { ...cache.entities };
+    for (const [id, value] of Object.entries(hass?.entities ?? {})) {
+      cache.merged[id] = { ...cache.entities[id], ...(value as RegistryEntity), entity_id: id };
+    }
+  }
+  return cache.merged;
 }
 
 export function getRegistryEntity(entityId: string, hass: any): RegistryEntity | undefined {
-  return entityEntries(hass)[entityId];
+  return hass?.entities?.[entityId] ? { ...cacheFor(hass)?.entities[entityId], ...hass.entities[entityId], entity_id: entityId } : cacheFor(hass)?.entities[entityId];
 }
 
 export function getRegistryDevice(statusEntity: string, hass: any) {
@@ -63,9 +126,9 @@ export function getIntegration(statusEntity: string, hass: any): Integration {
   return platforms.size === 1 && platforms.has("zha") ? "zha" : "mqtt";
 }
 
-/** One snapshot per connection, shared by cards and editors; bounded retry/refresh. */
+/** One snapshot per connection, shared by cards and editors; event-driven refresh. */
 export async function loadIntegration(statusEntity: string, hass: any): Promise<void> {
-  if (!statusEntity || !hass?.callWS) return;
+  if (!hass?.callWS) return;
   const cache = cacheFor(hass);
   if (!cache) return;
   if (!cache.promise && Date.now() >= cache.expires) {
@@ -81,15 +144,29 @@ export async function loadIntegration(statusEntity: string, hass: any): Promise<
         cache.devices = Object.fromEntries(devices.value.filter((entry) => entry?.id).map((entry) => [entry.id, entry]));
       }
       cache.statusLookups.clear();
+      invalidate(cache);
       cache.expires = Date.now() + (entities.status === "fulfilled" && Array.isArray(entities.value) ? CACHE_MS : RETRY_MS);
-    })().finally(() => { cache.promise = undefined; });
+    })().finally(() => {
+      cache.promise = undefined;
+      if (cache.refreshPending) {
+        cache.refreshPending = false;
+        cache.expires = 0;
+        void loadIntegration("", hass);
+      } else {
+        for (const listener of cache.listeners) listener();
+      }
+    });
   }
   if (cache.promise) await cache.promise;
   const status = getRegistryEntity(statusEntity, hass);
-  if ((!status?.device_id || !status?.platform) && !cache.statusLookups.has(statusEntity)) {
+  if (statusEntity && (!status?.device_id || !status?.platform) && !cache.statusLookups.has(statusEntity)) {
     const lookup = Promise.resolve().then(() => hass.callWS({ type: "config/entity_registry/get", entity_id: statusEntity }))
       .then((entry) => {
-        if (entry && typeof entry === "object") cache.entities[statusEntity] = { ...entry, entity_id: statusEntity };
+        if (entry && typeof entry === "object") {
+          cache.entities[statusEntity] = { ...entry, entity_id: statusEntity };
+          invalidate(cache);
+          for (const listener of cache.listeners) listener();
+        }
       }).catch(() => { /* Keep naming defaults if registry access is unavailable. */ });
     cache.statusLookups.set(statusEntity, lookup);
   }
@@ -199,22 +276,35 @@ function findEntity(field: string, fallback: string, status: RegistryEntity | un
 }
 
 export function getAutomaticEntities(statusEntity: string, hass: any): Record<string, string | undefined> {
+  getDiscoveryRevision(hass);
+  const cache = cacheFor(hass);
+  const cached = cache?.resolved.get(statusEntity);
+  if (cached) return cached;
   const defaults = getEntityDefaults(statusEntity, getIntegration(statusEntity, hass));
   const entries = entityEntries(hass);
   const status = entries[statusEntity];
-  return Object.fromEntries(Object.entries(defaults).map(([field, fallback]) =>
+  const result = Object.fromEntries(Object.entries(defaults).map(([field, fallback]) =>
     [field, findEntity(field, fallback, status, entries, hass)]));
+  cache?.resolved.set(statusEntity, result);
+  return result;
 }
 
 export function getPhaseEntities(statusEntity: string, hass: any, field: "current" | "voltage", mainEntity: string | undefined, manualOverride: boolean): (string | undefined)[] {
+  getDiscoveryRevision(hass);
+  const cache = cacheFor(hass);
+  const key = JSON.stringify([statusEntity, field, mainEntity, manualOverride]);
+  const cached = cache?.phases.get(key);
+  if (cached) return cached;
   const entries = entityEntries(hass);
   const status = entries[statusEntity];
-  return [mainEntity, ...["b", "c"].map((phase) => {
+  const result = [mainEntity, ...["b", "c"].map((phase) => {
     if (!mainEntity) return undefined;
     const fallback = `${mainEntity}_phase_${phase}`;
     // Explicit main overrides retain the documented suffix convention.
     return manualOverride ? fallback : findEntity(`${field}_phase_${phase}`, fallback, status, entries, hass);
   })];
+  cache?.phases.set(key, result);
+  return result;
 }
 
 export function getDiscoverySignature(statusEntity: string, hass: any): string {

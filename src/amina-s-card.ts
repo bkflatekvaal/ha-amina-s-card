@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { getAutomaticEntities, getDiscoverySignature, getPhaseEntities, getRegistryDevice, getRegistryEntity, loadIntegration } from "./entity-defaults";
+import { getAutomaticEntities, getDiscoveryRevision, observeDiscovery, getPhaseEntities, getRegistryDevice, getRegistryEntity, loadIntegration } from "./entity-defaults";
 import { getPhaseTelemetry } from "./phase-telemetry";
 
 interface AminaCardConfig {
@@ -20,25 +20,57 @@ interface AminaCardConfig {
   advanced?: boolean;
 }
 
+/** One observer and one load per connection/registry revision/selected charger. */
+class DiscoveryController {
+  private connection: any;
+  private hass: any;
+  private status?: string;
+  private revision = -1;
+  private unsubscribe?: () => void;
+  update(hass: any, status: string, changed: () => void) {
+    this.hass = hass;
+    const connection = hass?.connection ?? hass;
+    if (connection !== this.connection) {
+      this.unsubscribe?.();
+      this.connection = connection;
+      this.status = undefined;
+      this.unsubscribe = observeDiscovery(hass, () => {
+        this.revision = getDiscoveryRevision(this.hass);
+        changed();
+      });
+    }
+    const revision = getDiscoveryRevision(hass);
+    if (this.status === status && this.revision === revision) return;
+    this.status = status;
+    this.revision = revision;
+    void loadIntegration(status, hass);
+  }
+  disconnect() {
+    this.unsubscribe?.();
+    this.connection = undefined;
+    this.status = undefined;
+  }
+}
+
 class AminaCardConfigEditor extends HTMLElement {
   private _config: Partial<AminaCardConfig> = {};
   private _inputs: { [key: string]: HTMLInputElement | any } = {};
   private _hass: any;
   private _showOptional = false;
+  private discovery = new DiscoveryController();
 
   set hass(value: any) {
     this._hass = value;
     const statusEntity = this._config.status_entity ?? "";
-    const discovery = getDiscoverySignature(statusEntity, value);
-    void loadIntegration(statusEntity, value).then(() => {
-      if (this._config.status_entity === statusEntity && getDiscoverySignature(statusEntity, this.hass) !== discovery) this.render();
-    });
+    this.discovery.update(value, statusEntity, () => this.render());
     if (this.isConnected) {
       this.querySelectorAll("ha-entity-picker").forEach((picker: any) => {
         picker.hass = value;
       });
     }
   }
+
+  disconnectedCallback() { this.discovery.disconnect(); }
 
   get hass() {
     return this._hass;
@@ -318,22 +350,32 @@ export class AminaSCard extends LitElement {
   @property({ attribute: false }) public hass: any;
   private _config?: AminaCardConfig;
 
+  private discovery = new DiscoveryController();
+  private resolvedConfig?: AminaCardConfig;
+  private resolvedDefaults?: Record<string, string | undefined>;
+  private resolvedSource?: AminaCardConfig;
+
   public get config(): AminaCardConfig | undefined {
     if (!this._config) return undefined;
-    return {
-      ...getAutomaticEntities(this._config.status_entity, this.hass),
-      ...this._config,
-      title: this.getTitle(),
-    };
+    const defaults = getAutomaticEntities(this._config.status_entity, this.hass);
+    const title = this.getTitle();
+    if (defaults !== this.resolvedDefaults || this._config !== this.resolvedSource || title !== this.resolvedConfig?.title) {
+      this.resolvedDefaults = defaults;
+      this.resolvedSource = this._config;
+      this.resolvedConfig = { ...defaults, ...this._config, title };
+    }
+    return this.resolvedConfig;
   }
 
   protected willUpdate() {
     const statusEntity = this._config?.status_entity;
     if (!statusEntity) return;
-    const discovery = getDiscoverySignature(statusEntity, this.hass);
-    void loadIntegration(statusEntity, this.hass).then(() => {
-      if (this._config?.status_entity === statusEntity && getDiscoverySignature(statusEntity, this.hass) !== discovery) this.requestUpdate();
-    });
+    this.discovery.update(this.hass, statusEntity, () => this.requestUpdate());
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.discovery.disconnect();
   }
 
   static styles = css`
