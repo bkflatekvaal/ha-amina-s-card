@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { getEntityDefaults, getIntegration, loadIntegration } from "./entity-defaults";
+import { getAutomaticEntities, getDiscoverySignature, getPhaseEntities, getRegistryDevice, getRegistryEntity, loadIntegration } from "./entity-defaults";
 import { getPhaseTelemetry } from "./phase-telemetry";
 
 interface AminaCardConfig {
@@ -29,9 +29,9 @@ class AminaCardConfigEditor extends HTMLElement {
   set hass(value: any) {
     this._hass = value;
     const statusEntity = this._config.status_entity ?? "";
-    const integration = getIntegration(statusEntity, value);
+    const discovery = getDiscoverySignature(statusEntity, value);
     void loadIntegration(statusEntity, value).then(() => {
-      if (this._config.status_entity === statusEntity && getIntegration(statusEntity, this.hass) !== integration) this.render();
+      if (this._config.status_entity === statusEntity && getDiscoverySignature(statusEntity, this.hass) !== discovery) this.render();
     });
     if (this.isConnected) {
       this.querySelectorAll("ha-entity-picker").forEach((picker: any) => {
@@ -73,7 +73,7 @@ class AminaCardConfigEditor extends HTMLElement {
   }
 
   private getDefaultEntity(field: string): string | undefined {
-    const defaults = getEntityDefaults(this._config.status_entity ?? "", getIntegration(this._config.status_entity ?? "", this.hass));
+    const defaults = getAutomaticEntities(this._config.status_entity ?? "", this.hass);
     return defaults[field];
   }
 
@@ -321,7 +321,7 @@ export class AminaSCard extends LitElement {
   public get config(): AminaCardConfig | undefined {
     if (!this._config) return undefined;
     return {
-      ...getEntityDefaults(this._config.status_entity, getIntegration(this._config.status_entity, this.hass)),
+      ...getAutomaticEntities(this._config.status_entity, this.hass),
       ...this._config,
       title: this.getTitle(),
     };
@@ -330,9 +330,9 @@ export class AminaSCard extends LitElement {
   protected willUpdate() {
     const statusEntity = this._config?.status_entity;
     if (!statusEntity) return;
-    const integration = getIntegration(statusEntity, this.hass);
+    const discovery = getDiscoverySignature(statusEntity, this.hass);
     void loadIntegration(statusEntity, this.hass).then(() => {
-      if (this._config?.status_entity === statusEntity && getIntegration(statusEntity, this.hass) !== integration) this.requestUpdate();
+      if (this._config?.status_entity === statusEntity && getDiscoverySignature(statusEntity, this.hass) !== discovery) this.requestUpdate();
     });
   }
 
@@ -568,8 +568,7 @@ export class AminaSCard extends LitElement {
     const title = this._config?.title?.trim();
     if (title) return title;
     const statusEntity = this._config?.status_entity;
-    const deviceId = this.hass?.entities?.[statusEntity]?.device_id;
-    const device = this.hass?.devices?.[deviceId];
+    const device = getRegistryDevice(statusEntity, this.hass);
     return device?.name_by_user || device?.name
       || this.getEntity(statusEntity)?.attributes?.friendly_name
       || statusEntity || "";
@@ -717,76 +716,73 @@ export class AminaSCard extends LitElement {
   }
 
   render() {
-    if (!this.hass || !this.config) {
+    const config = this.config;
+    if (!this.hass || !config) {
       return html``;
     }
 
-    const chargeLimit = this.getNumberValue(this.config.charge_limit_entity);
+    const chargeLimit = this.getNumberValue(config.charge_limit_entity);
 
-    const defaults = getEntityDefaults(this.config.status_entity, getIntegration(this.config.status_entity, this.hass));
-    const phaseValues = (entityId?: string) => [
-      this.getNumberValue(entityId),
-      this.getNumberValue(entityId ? `${entityId}_phase_b` : undefined),
-      this.getNumberValue(entityId ? `${entityId}_phase_c` : undefined),
-    ];
+    const currentPhaseEntities = getPhaseEntities(config.status_entity, this.hass, "current", config.current_entity, Boolean(this._config?.current_entity));
+    const voltagePhaseEntities = getPhaseEntities(config.status_entity, this.hass, "voltage", config.voltage_entity, Boolean(this._config?.voltage_entity));
     const phaseTelemetry = getPhaseTelemetry(
       this.getStatusMeta().charging,
-      phaseValues(this.config.current_entity),
-      phaseValues(this.config.voltage_entity),
+      currentPhaseEntities.map((entityId) => this.getNumberValue(entityId)),
+      voltagePhaseEntities.map((entityId) => this.getNumberValue(entityId)),
     );
-    const powerEntity = this.config.power_entity;
-    const powerInKw = this.getEntityUnit(powerEntity) === "kW"
-      || (!this.getEntityUnit(powerEntity) && powerEntity?.endsWith("_total_active_power"));
+    const powerEntity = config.power_entity;
+    const powerUnit = this.getEntityUnit(powerEntity) || getRegistryEntity(powerEntity, this.hass)?.unit_of_measurement;
+    const powerInKw = powerUnit === "kW" || (!powerUnit && powerEntity?.endsWith("_total_active_power"));
     const powerKw = this.getNumberValue(powerEntity) / (powerInKw ? 1 : 1000);
     const currentEntities = phaseTelemetry.threePhase
-      ? [this.config.current_entity, `${this.config.current_entity}_phase_b`, `${this.config.current_entity}_phase_c`]
-      : [this.config.current_entity];
+      ? currentPhaseEntities
+      : [config.current_entity];
     const voltage = phaseTelemetry.voltage;
     const voltagePrefix = phaseTelemetry.threePhaseVoltage ? "3p " : "";
-    const linkquality = this.getNumberValue(this.config.linkquality_entity);
-    const showLinkquality = Boolean(this.getEntity(this.config.linkquality_entity))
-      && !this.hass.entities?.[this.config.linkquality_entity]?.disabled_by;
-    const voltageIcon = this.getEntityIcon(this.config.voltage_entity) || "mdi:sine-wave";
-    const chargeLimitIcon = this.getEntityIcon(this.config.charge_limit_entity) || "mdi:ev-station";
-    const linkqualityIcon = this.getEntityIcon(this.config.linkquality_entity) || "mdi:signal";
-    const linkqualityUnit = this.getEntityUnit(this.config.linkquality_entity) || "";
+    const linkquality = this.getNumberValue(config.linkquality_entity);
+    const showLinkquality = Boolean(this.getEntity(config.linkquality_entity))
+      && !getRegistryEntity(config.linkquality_entity, this.hass)?.disabled_by;
+    const voltageIcon = this.getEntityIcon(config.voltage_entity) || "mdi:sine-wave";
+    const chargeLimitIcon = this.getEntityIcon(config.charge_limit_entity) || "mdi:ev-station";
+    const linkqualityIcon = this.getEntityIcon(config.linkquality_entity) || "mdi:signal";
+    const linkqualityUnit = this.getEntityUnit(config.linkquality_entity) || "";
     const { mainStatus, statusClass, secondary, available, charging, connected, alarmActive, derated, alarmText } = this.getStatusMeta();
     const isCharging = charging;
     const isConnected = connected;
-    const sessionEnergy = this.getNumberValue(this.config.energy_entity);
+    const sessionEnergy = this.getNumberValue(config.energy_entity);
     const displayEnergy = isCharging || isConnected ? sessionEnergy : Math.max(sessionEnergy, 0);
 
-    const chargerState = this.getState(this.config.charger_entity).toLowerCase();
+    const chargerState = this.getState(config.charger_entity).toLowerCase();
     const chargerOn = chargerState === "on";
     const ledColor = this.getLedColor();
 
     return html`
       <ha-card>
         <div class="card">
-          <div class="card-header">${this.config.title}</div>
+          <div class="card-header">${config.title}</div>
           <div class="header">
-            <div class="charger-visual" aria-label="Amina S charger icon" @click=${() => this.showMoreInfo(this.config.status_entity)} style="cursor:pointer;">
+            <div class="charger-visual" aria-label="Amina S charger icon" @click=${() => this.showMoreInfo(config.status_entity)} style="cursor:pointer;">
               <svg class="charger-icon" viewBox="0 0 24 24" role="img" aria-hidden="true">
                 <path fill="${ledColor}" d="M9.611 2c-.575 0-1.038.463-1.038 1.039v8.953h6.854V3.04c0-.577-.464-1.039-1.038-1.039Zm4.587.609a.596.596 0 0 1 .598.596.596.596 0 0 1-.598.596.596.596 0 0 1-.598-.596.596.596 0 0 1 .598-.596M8.573 12.3v4.136c0 .575.463 1.038 1.038 1.038h4.777c.575 0 1.038-.463 1.038-1.038v-4.135Zm2.077 5.487v1.266a.623.623 0 0 0 .624.623h.205V22h1.042v-2.325h.206a.623.623 0 0 0 .623-.623v-1.266Z"/>
               </svg>
             </div>
             <div class="status-wrap">
-              <div class="status-main ${statusClass}" @click=${() => this.showMoreInfo(this.config.status_entity)} style="cursor:pointer;">${mainStatus}</div>
+              <div class="status-main ${statusClass}" @click=${() => this.showMoreInfo(config.status_entity)} style="cursor:pointer;">${mainStatus}</div>
               <div class="status-secondary ${alarmActive || derated ? "status-warning" : ""}">${secondary}</div>
               ${available ? html`<button class="action-toggle" @click=${() => this.toggleCharger()} aria-label="${chargerOn ? "Stop charging" : "Start charging"}">
                 ${chargerOn ? "Stop ■" : "Start ▶"}
               </button>` : ""}
             </div>
             <div class="top-right">
-              <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.voltage_entity)} style="cursor:pointer;">
+              <div class="telemetry-row" @click=${() => this.showMoreInfo(config.voltage_entity)} style="cursor:pointer;">
                 <span class="telemetry-value">${voltagePrefix}${this.formatReading(voltage, 1, "V")}</span>
                 <ha-icon class="telemetry-icon" .icon=${voltageIcon}></ha-icon>
               </div>
-              <div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.charge_limit_entity)} style="cursor:pointer;">
+              <div class="telemetry-row" @click=${() => this.showMoreInfo(config.charge_limit_entity)} style="cursor:pointer;">
                 <span class="telemetry-value">Max ${this.formatReading(chargeLimit, 0, "A")}</span>
                 <ha-icon class="telemetry-icon" .icon=${chargeLimitIcon}></ha-icon>
               </div>
-              ${showLinkquality ? html`<div class="telemetry-row" @click=${() => this.showMoreInfo(this.config.linkquality_entity)} style="cursor:pointer;">
+              ${showLinkquality ? html`<div class="telemetry-row" @click=${() => this.showMoreInfo(config.linkquality_entity)} style="cursor:pointer;">
                 <span class="telemetry-value">${this.formatReading(linkquality, 0, linkqualityUnit)}</span>
                 <ha-icon class="telemetry-icon" .icon=${linkqualityIcon}></ha-icon>
               </div>` : ""}
@@ -806,7 +802,7 @@ export class AminaSCard extends LitElement {
                 </div>
               `)}
             </div>
-            <div class="metric" @click=${() => this.showMoreInfo(this.config.energy_entity)} style="cursor:pointer;">
+            <div class="metric" @click=${() => this.showMoreInfo(config.energy_entity)} style="cursor:pointer;">
               <div class="metric-label">Session</div>
               <div class="metric-value">${this.formatReading(displayEnergy, 2, "kWh")}</div>
             </div>

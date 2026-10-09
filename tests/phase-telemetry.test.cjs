@@ -99,13 +99,13 @@ test('registry lookup is cached across cards and resolves ZHA asynchronously', a
   const connection = {};
   const hass = { connection, callWS: async (message) => {
     calls++;
-    assert.equal(message.type, 'config/entity_registry/get');
-    assert.equal(message.entity_id, 'sensor.garage_ev_status');
-    return { platform: 'zha' };
+    if (message.type === 'config/device_registry/list') return [];
+    assert.equal(message.type, 'config/entity_registry/list');
+    return [{ entity_id: 'sensor.garage_ev_status', device_id: 'garage', platform: 'zha' }];
   } };
   assert.equal(getIntegration('sensor.garage_ev_status', hass), 'mqtt');
   await Promise.all([loadIntegration('sensor.garage_ev_status', hass), loadIntegration('sensor.garage_ev_status', { ...hass })]);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   assert.equal(getIntegration('sensor.garage_ev_status', hass), 'zha');
 });
 test('failed registry access and other platforms fall back to MQTT defaults', async () => {

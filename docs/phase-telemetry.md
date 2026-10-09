@@ -10,7 +10,7 @@ Missing or invalid total power displays `-`. Individual phase powers are neither
 
 ## Phase detection and current
 
-While the selected status reads `Charging` (case-insensitive), valid positive current on more than one phase triggers three-phase display. The card uses the selected current entity and its `_phase_b` and `_phase_c` companions, including manual overrides. Unknown or unavailable readings do not count as active phases.
+While the selected status reads `Charging` (case-insensitive), valid positive current on more than one phase triggers three-phase display. The card discovers main and phase current entities from the same device. Naming fallbacks and explicit current overrides use `_phase_b` and `_phase_c` companions. Unknown or unavailable readings do not count as active phases.
 
 Three-phase charging shows separate **A**, **B**, and **C** current lines. Missing readings show `-` independently; zero readings remain zero. Clicking each line opens its entity.
 
@@ -18,7 +18,7 @@ Single-phase charging and idle states show only the selected main current entity
 
 ## Voltage
 
-Voltage uses the selected main entity and its `_phase_b` and `_phase_c` companions, including overrides.
+Voltage uses the selected main entity and phase B/C entities discovered on the same device. Naming fallbacks and explicit voltage overrides use `_phase_b` and `_phase_c` companions.
 
 | State | Voltage display |
 | --- | --- |

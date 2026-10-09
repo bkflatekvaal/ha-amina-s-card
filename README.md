@@ -37,7 +37,7 @@ status_entity: sensor.amina_s_ev_status
 ```
 
 - The heading defaults to the device name. Clear an existing **Title** override to use it.
-- The card detects ZHA or MQTT and chooses entity defaults. Unknown integrations use MQTT names. Use **Optional override** for different entity IDs.
+- The card discovers entities on the selected charger's device, with ZHA/MQTT naming fallbacks. Use **Optional override** when needed.
 - For ZHA, install the quirk, recreate/check entity IDs, and update the card's selection. See [ZHA setup](docs/zha-setup.md).
 - Enable LQI/link quality manually for both integrations. Its row is hidden when disabled or absent. Missing numeric readings show `-`.
 

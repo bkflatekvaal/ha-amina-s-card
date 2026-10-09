@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Discover related entities within the selected status entity's device and integration using registry metadata, including renamed current and voltage phases. Reject naming fallbacks associated with another charger and preserve manual overrides.
+- Share cached entity/device registry snapshots across cards and editors, update after asynchronous discovery, and refresh or retry at bounded intervals.
+- Preserve existing naming defaults when registry information is missing or ambiguous, and retain the phase-suffix convention for explicit current and voltage overrides. Keep the card layout and required configuration unchanged.
+- Add automated coverage for single and multiple MQTT/ZHA chargers, mixed integrations, renamed entities, overrides, ambiguous metadata, failures, cache refresh, and asynchronous selection changes.
 - Hide Start/Stop controls when the main status entity is unavailable, unknown, or missing, and show **Waiting for charger to come online** instead of vehicle-waiting text.
 
 ## 1.0.6 — 2026-10-09
