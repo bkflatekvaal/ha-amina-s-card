@@ -1,5 +1,6 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { getEntityDefaults } from "./entity-defaults";
 
 interface AminaCardConfig {
   title?: string;
@@ -51,7 +52,7 @@ class AminaCardConfigEditor extends HTMLElement {
       power_entity: (state) => !state ? false : state.entity_id.startsWith("sensor.") && (state.attributes.device_class === "power" || state.attributes.unit_of_measurement === "kW" || state.attributes.unit_of_measurement === "W"),
       current_entity: (state) => !state ? false : state.entity_id.startsWith("sensor.") && (state.attributes.device_class === "current" || state.attributes.unit_of_measurement === "A"),
       voltage_entity: (state) => !state ? false : state.entity_id.startsWith("sensor.") && (state.attributes.device_class === "voltage" || state.attributes.unit_of_measurement === "V"),
-      linkquality_entity: (state) => !state ? false : state.entity_id.startsWith("sensor.") && (state.attributes.device_class === "signal_strength" || state.attributes.device_class === "signal" || ["lqi", "dB", "dBm"].includes(state.attributes.unit_of_measurement) || state.entity_id.toLowerCase().includes("linkquality")),
+      linkquality_entity: (state) => !state ? false : state.entity_id.startsWith("sensor.") && (state.attributes.device_class === "signal_strength" || state.attributes.device_class === "signal" || ["lqi", "dB", "dBm"].includes(state.attributes.unit_of_measurement) || state.entity_id.toLowerCase().includes("linkquality") || state.entity_id.toLowerCase().endsWith("_lqi")),
       energy_entity: (state) => !state ? false : state.entity_id.startsWith("sensor.") && (state.attributes.device_class === "energy" || state.attributes.unit_of_measurement === "kWh" || state.attributes.unit_of_measurement === "Wh"),
       charge_limit_entity: (state) => !state ? false : state.entity_id.startsWith("number."),
       charger_entity: (state) => !state ? false : state.entity_id.startsWith("switch."),
@@ -65,29 +66,7 @@ class AminaCardConfigEditor extends HTMLElement {
   }
 
   private getDefaultEntity(field: string): string | undefined {
-    const statusEntity = (this._config.status_entity ?? "").trim();
-    const entityName = statusEntity.split(".").pop() ?? "";
-    const baseName = entityName
-      .replace(/_status$/i, "")
-      .replace(/_ev$/i, "")
-      .replace(/_charger$/i, "")
-      .trim();
-
-    if (!baseName) return undefined;
-
-    const defaults: Record<string, string> = {
-      power_entity: `sensor.${baseName}_power`,
-      current_entity: `sensor.${baseName}_current`,
-      voltage_entity: `sensor.${baseName}_voltage`,
-      linkquality_entity: `sensor.${baseName}_linkquality`,
-      energy_entity: `sensor.${baseName}_last_session_energy`,
-      charge_limit_entity: `number.${baseName}_charge_limit`,
-      charger_entity: `switch.${baseName}`,
-      alarm_entity: `binary_sensor.${baseName}_alarm_active`,
-      alarms_entity: `sensor.${baseName}_alarms`,
-      derated_entity: `binary_sensor.${baseName}_derated`,
-    };
-
+    const defaults = getEntityDefaults(this._config.status_entity ?? "", this.hass?.states);
     return defaults[field];
   }
 
@@ -182,7 +161,8 @@ class AminaCardConfigEditor extends HTMLElement {
   }
 
   private getUnitsForField(field: string): string[] | undefined {
-    return field === "linkquality_entity" ? ["lqi"] : undefined;
+    // ZHA's LQI sensor may have no unit, so it must remain selectable.
+    return undefined;
   }
 
   private renderTextField(key: string, label: string) {
@@ -235,7 +215,7 @@ class AminaCardConfigEditor extends HTMLElement {
       if (!key) return;
       const value = input.value ?? input.getAttribute("value") ?? "";
       if (value) {
-        config[key as keyof AminaCardConfig] = value as any;
+        (config as Record<string, unknown>)[key] = value;
       } else {
         delete config[key as keyof AminaCardConfig];
       }
@@ -243,7 +223,7 @@ class AminaCardConfigEditor extends HTMLElement {
 
     if (changedKey) {
       if (changedValue) {
-        config[changedKey as keyof AminaCardConfig] = changedValue as any;
+        (config as Record<string, unknown>)[changedKey] = changedValue;
       } else {
         delete config[changedKey as keyof AminaCardConfig];
       }
@@ -326,7 +306,16 @@ class AminaCardConfigEditor extends HTMLElement {
 @customElement("amina-s-card")
 export class AminaSCard extends LitElement {
   @property({ attribute: false }) public hass: any;
-  @property({ attribute: false }) public config!: AminaCardConfig;
+  private _config?: AminaCardConfig;
+
+  public get config(): AminaCardConfig | undefined {
+    if (!this._config) return undefined;
+    return {
+      title: "Amina S Charger",
+      ...getEntityDefaults(this._config.status_entity, this.hass?.states),
+      ...this._config,
+    };
+  }
 
   static styles = css`
     :host {
@@ -526,39 +515,8 @@ export class AminaSCard extends LitElement {
       throw new Error("You must set status_entity");
     }
 
-    const statusEntity = config.status_entity;
-    const baseName = this.extractStatusBaseName(statusEntity);
-
-    const inferredConfig: Partial<AminaCardConfig> = {
-      title: "Amina S Charger",
-      status_entity: statusEntity,
-      power_entity: baseName ? `sensor.${baseName}_power` : undefined,
-      current_entity: baseName ? `sensor.${baseName}_current` : undefined,
-      voltage_entity: baseName ? `sensor.${baseName}_voltage` : undefined,
-      linkquality_entity: baseName ? `sensor.${baseName}_linkquality` : undefined,
-      energy_entity: baseName ? `sensor.${baseName}_last_session_energy` : undefined,
-      charge_limit_entity: baseName ? `number.${baseName}_charge_limit` : undefined,
-      charger_entity: baseName ? `switch.${baseName}` : undefined,
-      alarm_entity: baseName ? `binary_sensor.${baseName}_alarm_active` : undefined,
-      alarms_entity: baseName ? `sensor.${baseName}_alarms` : undefined,
-      derated_entity: baseName ? `binary_sensor.${baseName}_derated` : undefined,
-    };
-
-    this.config = {
-      ...inferredConfig,
-      ...config,
-    } as AminaCardConfig;
-  }
-
-  private extractStatusBaseName(statusEntity: string): string {
-    const entityId = statusEntity.split(".").pop() ?? statusEntity;
-    if (!entityId) return "";
-
-    return entityId
-      .replace(/_status$/i, "")
-      .replace(/_ev$/i, "")
-      .replace(/_charger$/i, "")
-      .trim();
+    this._config = { ...config } as AminaCardConfig;
+    this.requestUpdate();
   }
 
   private getEntity(entityId?: string) {
@@ -800,16 +758,6 @@ export class AminaSCard extends LitElement {
     return {
       title: "Amina S Charger",
       status_entity: "sensor.amina_s_ev_status",
-      power_entity: "sensor.amina_s_power",
-      current_entity: "sensor.amina_s_current",
-      voltage_entity: "sensor.amina_s_voltage",
-      linkquality_entity: "sensor.amina_s_linkquality",
-      energy_entity: "sensor.amina_s_last_session_energy",
-      charge_limit_entity: "number.amina_s_charge_limit",
-      charger_entity: "switch.amina_s",
-      alarm_entity: "binary_sensor.amina_s_alarm_active",
-      alarms_entity: "sensor.amina_s_alarms",
-      derated_entity: "binary_sensor.amina_s_derated",
       advanced: false,
     };
   }
@@ -831,5 +779,5 @@ declare global {
 (window as any).customCards.push({
   type: "amina-s-card",
   name: "Amina S Card",
-  description: "Amina S EV charger card using the native Zigbee2MQTT exposes."
+  description: "Amina S EV charger card for Zigbee2MQTT and ZHA with the Amina S quirk."
 });

@@ -1,6 +1,6 @@
 # Amina S Card
 
-A compact Home Assistant Lovelace card for Amina S EV chargers exposed through Zigbee2MQTT. It shows the charger status, LED state, voltage, link quality, charge limit, power, current, and the last charging-session energy.
+A compact Home Assistant Lovelace card for Amina S EV chargers exposed through Zigbee2MQTT or ZHA with the Amina S custom quirk. It shows the charger status, LED state, voltage, link quality, charge limit, power, current, and the last charging-session energy.
 
 The card uses the real Amina S entities exposed by Home Assistant. It does not require template sensors or helper entities.
 
@@ -31,6 +31,15 @@ Then add the card to a dashboard.
 
 ## Recent changes
 
+### v1.0.3
+
+- Added automatic lookup for ZHA LQI and charge-current-limit entity names.
+- Preserved automatic lookup when entities become available after the card loads, while keeping manual overrides authoritative.
+- Allowed ZHA LQI sensors without a unit in the configuration editor.
+- Documented ZHA quirk installation, recreating entity IDs, enabling diagnostic LQI, and manual overrides.
+
+See [changelog.md](changelog.md) for the release history.
+
 ### v1.0.2
 
 - Improved the compact header layout by moving the charge-limit readout into the telemetry row.
@@ -50,13 +59,38 @@ The visual editor includes optional overrides for installations where an entity 
 
 - Sub-status can use any entity type and replaces the secondary status text.
 - Power, current, voltage, and energy use sensor device classes.
-- Link quality uses the sensor with the `lqi` unit.
+- Link quality can use the Zigbee2MQTT link-quality sensor or the ZHA LQI diagnostic sensor, including sensors without a unit.
 - Charge limit uses a `number` entity.
 - Charger control uses a `switch` entity.
 - Alarm state and derated state use binary sensors.
 - The alarm list uses a sensor entity.
 
 The status entity is the source of truth for charging and EV connection status. Separate connected and charging entities are not required.
+
+### ZHA setup
+
+ZHA exposes only limited Amina S functionality without a custom quirk. Install the community [Amina S ZHA quirk](https://github.com/attaxia/amina_s_zha_quirk) using its installation instructions, restart Home Assistant, and reconfigure the charger in ZHA to create the additional entities. If entities are still missing, follow the quirk's guidance to remove and pair the device again.
+
+After installing the quirk, recreate the entity IDs using Home Assistant's **Recreate entity IDs** action on the device page, then check the resulting IDs and select the new EV status entity in the card. Existing card overrides and automations may need their entity references updated. Some card entities may still need to be assigned manually under **Optional override**, especially the charger switch and thermal derating sensor.
+
+On the charger's ZHA device page, find **LQI** under **Diagnostics**, open its entity settings, and enable it manually. Its usual entity ID is `sensor.<name>_lqi`. The ZHA charge-limit entity is normally `number.<name>_charge_current_limit`.
+
+The card checks for existing entities with the following names, using the base name derived from `status_entity`:
+
+| Card field | Zigbee2MQTT | ZHA |
+| --- | --- | --- |
+| Link quality | `sensor.<name>_linkquality` | `sensor.<name>_lqi` |
+| Charge limit | `number.<name>_charge_limit` | `number.<name>_charge_current_limit` |
+
+This automatically selects compatible entity names rather than definitively identifying the integration. If both names exist, the Zigbee2MQTT name takes precedence. Explicit overrides always take precedence over automatic lookup. Renamed entities may require manual overrides, for example:
+
+```yaml
+type: custom:amina-s-card
+status_entity: sensor.amina_s_ev_status
+linkquality_entity: sensor.amina_s_lqi
+charge_limit_entity: number.amina_s_charge_current_limit
+# Set other overrides to the actual entity IDs shown on your ZHA device page.
+```
 
 ## Three-phase charging
 
