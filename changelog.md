@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use the selected power entity's live unit of measurement for W/kW/MW conversion to kW. Show `-` for missing or unsupported units instead of inferring units from entity IDs or registry metadata; preserve valid zero readings and invalid-state handling across integrations and overrides.
+- Add power-unit tests for W, kW, MW, missing and unsupported units, invalid states, zero readings, and manual overrides across MQTT and ZHA setups.
 - Discover related entities within the selected status entity's device and integration using registry metadata, including renamed current and voltage phases. Reject naming fallbacks associated with another charger and preserve manual overrides.
 - Share cached entity/device registry snapshots across cards and editors, update after asynchronous discovery, and refresh or retry at bounded intervals.
 - Preserve existing naming defaults when registry information is missing or ambiguous, and retain the phase-suffix convention for explicit current and voltage overrides. Keep the card layout and required configuration unchanged.

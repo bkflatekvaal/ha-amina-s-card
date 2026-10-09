@@ -564,6 +564,16 @@ export class AminaSCard extends LitElement {
     return Number.isFinite(parsed) ? parsed : NaN;
   }
 
+  private getPowerKw(entityId?: string): number {
+    const value = this.getNumberValue(entityId);
+    switch (this.getEntityUnit(entityId).trim()) {
+      case "W": return value / 1000;
+      case "kW": return value;
+      case "MW": return value * 1000;
+      default: return NaN;
+    }
+  }
+
   private getTitle(): string {
     const title = this._config?.title?.trim();
     if (title) return title;
@@ -731,9 +741,7 @@ export class AminaSCard extends LitElement {
       voltagePhaseEntities.map((entityId) => this.getNumberValue(entityId)),
     );
     const powerEntity = config.power_entity;
-    const powerUnit = this.getEntityUnit(powerEntity) || getRegistryEntity(powerEntity, this.hass)?.unit_of_measurement;
-    const powerInKw = powerUnit === "kW" || (!powerUnit && powerEntity?.endsWith("_total_active_power"));
-    const powerKw = this.getNumberValue(powerEntity) / (powerInKw ? 1 : 1000);
+    const powerKw = this.getPowerKw(powerEntity);
     const currentEntities = phaseTelemetry.threePhase
       ? currentPhaseEntities
       : [config.current_entity];

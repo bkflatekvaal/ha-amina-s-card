@@ -4,9 +4,9 @@ Three-phase behavior is experimental pending live verification. The card has bee
 
 ## Power
 
-Power always uses the selected total power entity: `_total_active_power` for MQTT/Zigbee2MQTT or `_total_power` for detected ZHA, unless overridden. Readings in W are converted to kW; readings in kW are displayed directly. Without a unit, the standard `_total_active_power` name is treated as kW and other names as W.
+Power uses the selected total power entity, discovered from the charger device or falling back to `_total_active_power` for MQTT/Zigbee2MQTT and `_total_power` for ZHA, unless overridden. The entity's live `unit_of_measurement` determines conversion: W is divided by 1000, kW is displayed directly, and MW is multiplied by 1000. Displayed power always uses kW.
 
-Missing or invalid total power displays `-`. Individual phase powers are neither required nor summed.
+Missing or invalid total power, or a missing or unsupported unit, displays `-`. Units are not inferred from entity names or registry metadata. Valid zero readings remain visible. This applies equally to both integrations and manual overrides. Individual phase powers are neither required nor summed.
 
 ## Phase detection and current
 

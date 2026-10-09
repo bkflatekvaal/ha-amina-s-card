@@ -186,3 +186,48 @@ test('missing or zero voltage cannot produce a misleading average', () => {
     assert.ok(Number.isNaN(result.voltage)); assert.equal(result.threePhaseVoltage, false);
   }
 });
+test('power converts W, kW, and MW consistently for MQTT, ZHA, and manual overrides', () => {
+  for (const selection of ['mqtt', 'zha', 'manual']) {
+    for (const [unit, state] of [['W', '7500'], ['kW', '7.5'], ['MW', '0.0075']]) {
+      const card = makeCard();
+      let entityId = 'sensor.garage_total_active_power';
+      if (selection === 'zha') {
+        card.hass.entities = { 'sensor.garage_ev_status': { platform: 'zha' } };
+        entityId = 'sensor.garage_total_power';
+      } else if (selection === 'manual') {
+        entityId = 'sensor.custom_total_active_power';
+        card.setConfig({ status_entity: 'sensor.garage_ev_status', power_entity: entityId });
+      }
+      card.hass.states[entityId] = { state, attributes: { unit_of_measurement: unit } };
+      assert.equal(card.getPowerKw(entityId), 7.5);
+      assert.ok(card.render().includes('7.5 kW'));
+    }
+  }
+});
+test('missing and unsupported power units show dash even with suggestive names or registry units', () => {
+  for (const unit of [undefined, null, '', ' ', 'VA', 'Wh', 'GW', 'watts', 123]) {
+    const card = makeCard();
+    card.hass.states['sensor.garage_total_active_power'] = { state: '7500', attributes: { unit_of_measurement: unit } };
+    card.hass.entities = { 'sensor.garage_total_active_power': { unit_of_measurement: 'kW' } };
+    assert.ok(Number.isNaN(card.getPowerKw('sensor.garage_total_active_power')));
+    assert.ok(/Power<\/div>\s*<div class="metric-value">-<\/div>/.test(card.render()));
+  }
+});
+test('invalid power states show dash for every supported unit', () => {
+  for (const unit of ['W', 'kW', 'MW']) {
+    for (const state of ['unknown', 'unavailable', '', ' ', 'invalid', 'Infinity', null, undefined]) {
+      const card = makeCard();
+      card.hass.states['sensor.garage_total_active_power'] = { state, attributes: { unit_of_measurement: unit } };
+      assert.ok(Number.isNaN(card.getPowerKw('sensor.garage_total_active_power')));
+      assert.ok(/Power<\/div>\s*<div class="metric-value">-<\/div>/.test(card.render()));
+    }
+  }
+});
+test('zero power stays visible for all supported source units', () => {
+  for (const unit of ['W', 'kW', 'MW']) {
+    const card = makeCard();
+    card.hass.states['sensor.garage_total_active_power'] = { state: '0', attributes: { unit_of_measurement: unit } };
+    assert.equal(card.getPowerKw('sensor.garage_total_active_power'), 0);
+    assert.ok(card.render().includes('0.0 kW'));
+  }
+});
