@@ -54,6 +54,7 @@ See [all screenshots](docs/screenshots.md) for other states and the configuratio
 - [Configuration and entity defaults](docs/configuration.md)
 - [ZHA setup](docs/zha-setup.md)
 - [Power and phase telemetry](docs/phase-telemetry.md)
+- [More frequent energy updates using helpers](docs/live-energy.md)
 - [Changelog](changelog.md)
 
 ## Development
