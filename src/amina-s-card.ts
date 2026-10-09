@@ -721,10 +721,8 @@ export class AminaSCard extends LitElement {
       this.getNumberValue(entityId ? `${entityId}_phase_b` : undefined),
       this.getNumberValue(entityId ? `${entityId}_phase_c` : undefined),
     ];
-    const phasePowerEntity = defaults.power_entity?.replace(/_total_(active_)?power$/, "_power");
     const phaseTelemetry = getPhaseTelemetry(
       this.getStatusMeta().charging,
-      phaseValues(phasePowerEntity),
       phaseValues(this.config.current_entity),
       phaseValues(this.config.voltage_entity),
     );

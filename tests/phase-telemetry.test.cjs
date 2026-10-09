@@ -19,7 +19,7 @@ function makeCard(charging = true) {
   card.setConfig({ status_entity: 'sensor.garage_ev_status' });
   const states = { 'sensor.garage_ev_status': { state: charging ? 'Charging' : 'EV connected', attributes: {} } };
   for (const [suffix, power, current, voltage] of [['', 2300, 10, 230], ['_phase_b', 2310, 11, 231], ['_phase_c', 2290, 12, 229]]) {
-    for (const [kind, value, unit] of [['power', power, 'W'], ['current', current, 'A'], ['voltage', voltage, 'V']]) {
+    for (const [kind, value, unit] of [['current', current, 'A'], ['voltage', voltage, 'V']]) {
       states[`sensor.garage_${kind}${suffix}`] = { state: String(value), attributes: { unit_of_measurement: unit } };
     }
   }
@@ -34,10 +34,10 @@ test('three-phase renders individual current lines, average voltage, and device 
 });
 test('single-phase renders only main current and always uses total power', () => {
   const card = makeCard();
-  card.hass.states['sensor.garage_power'].state = '0';
-  card.hass.states['sensor.garage_power_phase_c'].state = '0';
+  card.hass.states['sensor.garage_current'].state = '0';
+  card.hass.states['sensor.garage_current_phase_c'].state = '0';
   const output = card.render();
-  assert.ok(output.includes('10.0 A'));
+  assert.ok(output.includes('0.0 A'));
   assert.ok(!output.includes('11.0 A'));
   assert.ok(!output.includes('3p '));
   assert.ok(output.includes('231.0 V'));
@@ -101,9 +101,10 @@ test('missing total power shows dash instead of summing phase powers', () => {
 test('missing current phase shows dash independently; actual zero remains visible', () => {
   const card = makeCard();
   card.hass.states['sensor.garage_current_phase_b'].state = 'unavailable';
-  card.hass.states['sensor.garage_current_phase_c'].state = '0';
   const output = card.render();
-  assert.ok(output.includes('A: 10.0 A')); assert.ok(output.includes('B: -')); assert.ok(output.includes('C: 0.0 A'));
+  assert.ok(output.includes('A: 10.0 A')); assert.ok(output.includes('B: -')); assert.ok(output.includes('C: 12.0 A'));
+  card.hass.states['sensor.garage_current_phase_b'].state = '0';
+  assert.ok(card.render().includes('B: 0.0 A'));
 });
 test('custom current and voltage overrides derive their phase entities', () => {
   const card = makeCard();
@@ -118,8 +119,8 @@ test('custom current and voltage overrides derive their phase entities', () => {
   const output = card.render();
   for (const reading of ['8.0 kW', 'A: 16.0 A', 'B: 17.0 A', 'C: 18.0 A', '3p 243.0 V']) assert.ok(output.includes(reading));
   assert.ok(!output.includes('B: 11.0 A'));
-  card.hass.states['sensor.garage_power_phase_b'].state = '0';
-  card.hass.states['sensor.garage_power_phase_c'].state = '0';
+  card.hass.states['sensor.custom_current_phase_b'].state = '0';
+  card.hass.states['sensor.custom_current_phase_c'].state = '0';
   const singleOutput = card.render();
   assert.ok(singleOutput.includes('16.0 A'));
   assert.ok(singleOutput.includes('240.0 V'));
@@ -127,26 +128,25 @@ test('custom current and voltage overrides derive their phase entities', () => {
   assert.ok(!singleOutput.includes('3p '));
 });
 
-test('missing override phase entities show dashes rather than using default phases', () => {
+test('missing override phase entities do not trigger three-phase from default currents', () => {
   const card = makeCard();
   card.hass.states['sensor.custom_current'] = { state: '16', attributes: {} };
   card.hass.states['sensor.custom_voltage'] = { state: '240', attributes: {} };
   card.setConfig({ status_entity: 'sensor.garage_ev_status', current_entity: 'sensor.custom_current', voltage_entity: 'sensor.custom_voltage' });
   const output = card.render();
-  assert.ok(output.includes('A: 16.0 A'));
-  assert.ok(output.includes('B: -'));
-  assert.ok(output.includes('C: -'));
+  assert.ok(output.includes('16.0 A'));
+  assert.ok(!output.includes('B: '));
   assert.ok(!output.includes('3p '));
-  assert.ok(!output.includes('230.0 V'));
+  assert.ok(output.includes('240.0 V'));
 });
-test('more than one powered phase is three-phase; idle ignores stale phase powers', () => {
-  assert.equal(getPhaseTelemetry(true, [2300, 2300, 0], [10, 11, 0], [230, 231, 232]).threePhase, true);
+test('more than one positive current is three-phase; idle ignores stale phase currents', () => {
+  assert.equal(getPhaseTelemetry(true, [10, 11, 0], [230, 231, 232]).threePhase, true);
   const output = makeCard(false).render();
   assert.ok(output.includes('3p 230.0 V')); assert.ok(!output.includes('B: ')); assert.ok(output.includes('7.5 kW'));
 });
 test('idle voltage uses three available phases even with no power delivery', () => {
   const card = makeCard(false);
-  for (const suffix of ['', '_phase_b', '_phase_c']) card.hass.states[`sensor.garage_power${suffix}`].state = '0';
+  for (const suffix of ['', '_phase_b', '_phase_c']) card.hass.states[`sensor.garage_current${suffix}`].state = '0';
   assert.ok(card.render().includes('3p 230.0 V'));
 });
 test('idle voltage falls back to the main phase when extra voltages are invalid', () => {
@@ -160,7 +160,7 @@ test('idle voltage falls back to the main phase when extra voltages are invalid'
 });
 test('missing or zero voltage cannot produce a misleading average', () => {
   for (const value of [NaN, 0]) {
-    const result = getPhaseTelemetry(true, [2300, 2300, 2300], [10, 11, 12], [230, 231, value]);
+    const result = getPhaseTelemetry(true, [10, 11, 12], [230, 231, value]);
     assert.ok(Number.isNaN(result.voltage)); assert.equal(result.threePhaseVoltage, false);
   }
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6 — 2026-10-09
+
+- Detect three-phase charging from positive current on more than one phase, using the selected current entity and its derived phase B/C companions. Remove dependency on individual phase power sensors.
+- Simplify the README and move configuration, ZHA setup, phase telemetry, and screenshot details into linked documentation.
+- Review setup instructions and document the current entity defaults, missing readings, and experimental three-phase behavior.
+
 ## 1.0.5 — 2026-10-09
 
 - Detect each status entity's integration through Home Assistant's entity registry: ZHA selects ZHA names, MQTT selects Zigbee2MQTT names, and unknown integrations or unavailable registry access fall back to MQTT names.

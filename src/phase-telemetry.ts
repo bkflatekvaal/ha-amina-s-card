@@ -1,10 +1,9 @@
 export function getPhaseTelemetry(
   charging: boolean,
-  powers: number[],
   currents: number[],
   voltages: number[],
 ) {
-  const activePhases = powers.map((power, index) => power > 0 ? index : -1)
+  const activePhases = currents.map((current, index) => Number.isFinite(current) && current > 0 ? index : -1)
     .filter((index) => index >= 0);
   const threePhase = charging && activePhases.length > 1;
   const singlePhase = charging && activePhases.length === 1 ? activePhases[0] : 0;
