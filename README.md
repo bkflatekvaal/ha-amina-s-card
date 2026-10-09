@@ -68,6 +68,8 @@ npm run build
 
 The production bundle is written to `dist/amina-s-card.js`.
 
+See [testing and CI](docs/testing.md) for coverage and remaining manual checks.
+
 ## License
 
 [MIT](LICENSE).

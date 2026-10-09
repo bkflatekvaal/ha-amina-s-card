@@ -961,11 +961,14 @@ let W = class extends M {
     if (!this.getStatusMeta().available) return;
     const i = this.config.charger_entity;
     if (!i) return;
-    if (this.getState(i).toLowerCase() === "on") {
-      await this.hass.callService("switch", "turn_off", { entity_id: i });
-      return;
+    const t = this.getState(i).toLowerCase();
+    if (!(t !== "on" && t !== "off")) {
+      if (t === "on") {
+        await this.hass.callService("switch", "turn_off", { entity_id: i });
+        return;
+      }
+      await this.hass.callService("switch", "turn_on", { entity_id: i });
     }
-    await this.hass.callService("switch", "turn_on", { entity_id: i });
   }
   getLedColor() {
     const i = this.normaliseStatus(this.getState(this.config.status_entity)).toLowerCase(), t = this.getBooleanValue(this.config.alarm_entity), e = this.getBooleanValue(this.config.derated_entity);

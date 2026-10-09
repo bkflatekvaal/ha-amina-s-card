@@ -658,6 +658,7 @@ export class AminaSCard extends LitElement {
     if (!entityId) return;
 
     const state = this.getState(entityId).toLowerCase();
+    if (state !== "on" && state !== "off") return;
     if (state === "on") {
       await this.hass.callService("switch", "turn_off", { entity_id: entityId });
       return;

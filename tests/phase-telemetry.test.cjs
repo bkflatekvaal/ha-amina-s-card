@@ -31,6 +31,7 @@ test('offline status hides controls and overrides stale secondary text; recovery
   }
   assert.equal(serviceCalls, 0);
   card.hass.states['sensor.garage_ev_status'] = { state: 'EV connected', attributes: {} };
+  card.hass.states['switch.garage'] = { state: 'off', attributes: {} };
   assert.ok(card.render().includes('class="action-toggle"'));
   assert.ok(!card.render().includes('Waiting for charger to come online'));
   await card.toggleCharger();

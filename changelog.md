@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.0.7 — 2026-10-09
 
+- Extend Node-based tests for charger service calls, switch states, alarms, thermal derating, status text, sensor values, editor events, asynchronous discovery, and isolation between chargers.
+- Fix an existing control bug: unknown, unavailable, or missing charger switches no longer trigger a `turn_on` command. Only `on` and `off` switch states permit control actions.
+- Add Node.js 24 CI validation with npm caching, clean dependency installation, automated tests, TypeScript checks, and production builds alongside HACS validation.
 - Use the selected power entity's live unit of measurement for W/kW/MW conversion to kW. Show `-` for missing or unsupported units instead of inferring units from entity IDs or registry metadata; preserve valid zero readings and invalid-state handling across integrations and overrides.
 - Add power-unit tests for W, kW, MW, missing and unsupported units, invalid states, zero readings, and manual overrides across MQTT and ZHA setups.
 - Discover related entities within the selected status entity's device and integration using registry metadata, including renamed current and voltage phases. Reject naming fallbacks associated with another charger and preserve manual overrides.
@@ -9,6 +12,8 @@
 - Preserve existing naming defaults when registry information is missing or ambiguous, and retain the phase-suffix convention for explicit current and voltage overrides. Keep the card layout and required configuration unchanged.
 - Add automated coverage for single and multiple MQTT/ZHA chargers, mixed integrations, renamed entities, overrides, ambiguous metadata, failures, cache refresh, and asynchronous selection changes.
 - Hide Start/Stop controls when the main status entity is unavailable, unknown, or missing, and show **Waiting for charger to come online** instead of vehicle-waiting text.
+- Document live session-energy estimation with Integral and Utility Meter helpers, resetting the meter when charging starts, and overriding the card's energy entity.
+- Clarify HACS installation through a custom repository while the card is not listed in HACS.
 
 ## 1.0.6 — 2026-10-09
 
