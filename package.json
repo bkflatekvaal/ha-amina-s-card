@@ -15,7 +15,7 @@
     "vite": "^6.4.1"
   },
   "description": "A Home Assistant Lovelace card for Amina S EV chargers.",
-  "keywords": ["home-assistant", "lovelace", "amina", "zigbee2mqtt"],
+  "keywords": ["home-assistant", "lovelace", "amina", "zigbee2mqtt", "zha"],
   "author": "",
   "license": "MIT"
 }

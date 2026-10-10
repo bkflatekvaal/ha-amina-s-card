@@ -47,6 +47,7 @@ class DiscoveryController {
   }
   disconnect() {
     this.unsubscribe?.();
+    this.unsubscribe = undefined;
     this.connection = undefined;
     this.status = undefined;
   }

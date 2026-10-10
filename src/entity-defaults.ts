@@ -25,8 +25,9 @@ interface RegistryCache {
   resolved: Map<string, Record<string, string | undefined>>;
   phases: Map<string, (string | undefined)[]>;
   listeners: Set<() => void>;
-  watching?: boolean;
-  subscriptions: Set<() => void>;
+  subscriptionSession?: { hass: any };
+  subscriptions: Map<string, () => void>;
+  pendingSubscriptions: Set<string>;
   refreshPending?: boolean;
   statusLookups: Map<string, Promise<void>>;
 }
@@ -39,7 +40,7 @@ function cacheFor(hass: any): RegistryCache | undefined {
   if (!key || typeof key !== "object") return undefined;
   let cache = registries.get(key);
   if (!cache) {
-    cache = { entities: {}, devices: {}, expires: 0, revision: 0, statusLookups: new Map(), resolved: new Map(), phases: new Map(), listeners: new Set(), subscriptions: new Set() };
+    cache = { entities: {}, devices: {}, expires: 0, revision: 0, statusLookups: new Map(), resolved: new Map(), phases: new Map(), listeners: new Set(), subscriptions: new Map(), pendingSubscriptions: new Set() };
     registries.set(key, cache);
   }
   return cache;
@@ -64,32 +65,48 @@ export function getDiscoveryRevision(hass: any): number {
   return cache.revision;
 }
 
+function subscribeRegistryEvent(cache: RegistryCache, session: { hass: any }, type: string) {
+  // Keep pending attempts across sessions: reconnect must wait for stale cleanup.
+  if (cache.subscriptions.has(type) || cache.pendingSubscriptions.has(type)) return;
+  cache.pendingSubscriptions.add(type);
+  Promise.resolve().then(() => session.hass.connection.subscribeEvents(() => {
+    if (cache.subscriptionSession !== session) return;
+    if (cache.promise) cache.refreshPending = true;
+    else {
+      cache.expires = 0;
+      cache.statusLookups.clear();
+      void loadIntegration("", session.hass);
+    }
+  }, type)).then((unsubscribe) => {
+    if (cache.subscriptionSession === session) cache.subscriptions.set(type, unsubscribe);
+    else unsubscribe();
+  }).catch(() => { /* Collection replacements still invalidate discovery. */ })
+    .finally(() => {
+      cache.pendingSubscriptions.delete(type);
+      const current = cache.subscriptionSession;
+      if (current && current !== session) subscribeRegistryEvent(cache, current, type);
+    });
+}
+
 export function observeDiscovery(hass: any, listener: () => void): () => void {
   const cache = cacheFor(hass);
   if (!cache) return () => {};
   cache.listeners.add(listener);
-  if (!cache.watching && hass?.connection?.subscribeEvents) {
-    cache.watching = true;
+  if (!cache.subscriptionSession && hass?.connection?.subscribeEvents) {
+    const session = cache.subscriptionSession = { hass };
     for (const type of ["entity_registry_updated", "device_registry_updated"]) {
-      Promise.resolve(hass.connection.subscribeEvents(() => {
-        if (cache.promise) cache.refreshPending = true;
-        else {
-          cache.expires = 0;
-          cache.statusLookups.clear();
-          void loadIntegration("", hass);
-        }
-      }, type)).then((unsubscribe) => {
-        if (cache.listeners.size) cache.subscriptions.add(unsubscribe);
-        else unsubscribe();
-      }).catch(() => { /* Collection replacements still invalidate discovery. */ });
+      subscribeRegistryEvent(cache, session, type);
     }
   }
+  let disconnected = false;
   return () => {
+    if (disconnected) return;
+    disconnected = true;
     cache.listeners.delete(listener);
     if (!cache.listeners.size) {
-      for (const unsubscribe of cache.subscriptions) unsubscribe();
+      cache.subscriptionSession = undefined;
+      for (const unsubscribe of cache.subscriptions.values()) unsubscribe();
       cache.subscriptions.clear();
-      cache.watching = false;
     }
   };
 }

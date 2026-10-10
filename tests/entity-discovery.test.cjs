@@ -12,7 +12,7 @@ function setup() {
     const exports = {};
     runInNewContext(ts.transpileModule(readFileSync(`src/${name}.ts`, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, experimentalDecorators: true } }).outputText, {
       exports, Date: { now: () => now }, HTMLElement: class {}, window: {}, customElements: { define(name, constructor) { definitions[name] = constructor; } },
-      require: path => path.startsWith('./') ? modules[path.slice(2)] : path === 'lit' ? { LitElement: class { requestUpdate() { this.updates = (this.updates || 0) + 1; } }, html, css: html } : { customElement: () => () => {}, property: () => () => {} }
+      require: path => path.startsWith('./') ? modules[path.slice(2)] : path === 'lit' ? { LitElement: class { requestUpdate() { this.updates = (this.updates || 0) + 1; } disconnectedCallback() {} }, html, css: html } : { customElement: () => () => {}, property: () => () => {} }
     });
     modules[name] = exports;
   }
@@ -36,6 +36,232 @@ function fixture(device, platform = 'mqtt', prefix = device) {
 function hassWith(entities, devices = []) {
   return { connection: {}, states: {}, entities: Object.fromEntries(entities.map(entry => [entry.entity_id, entry])), devices: Object.fromEntries(devices.map(device => [device.id, device])) };
 }
+
+const flushSubscriptions = () => new Promise(resolve => setImmediate(resolve));
+function subscriptionFixture() {
+  const attempts = [], active = new Set();
+  const hass = hassWith(fixture('one'));
+  let requests = 0;
+  hass.callWS = async message => { requests++; return message.type === 'config/entity_registry/list' ? fixture('one') : []; };
+  hass.connection.subscribeEvents = (callback, type) => {
+    let resolve, reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    const attempt = { type, callback, unsubscribes: 0,
+      resolve() { resolve(() => { attempt.unsubscribes++; active.delete(attempt); }); },
+      reject() { active.delete(attempt); reject(new Error('Subscription denied')); }
+    };
+    // Model callbacks becoming live before the unsubscribe promise resolves.
+    active.add(attempt);
+    assert.equal([...active].filter(item => item.type === type).length, 1, `duplicate active ${type}`);
+    attempts.push(attempt);
+    return promise;
+  };
+  return { hass, attempts, active, get requests() { return requests; } };
+}
+
+test('subscription lifecycle: disconnect before resolution releases pending subscriptions', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const stop = api.observeDiscovery(f.hass, () => assert.fail('disconnected listener called'));
+  await flushSubscriptions();
+  stop();
+  for (const attempt of f.attempts) { attempt.callback(); attempt.resolve(); }
+  await flushSubscriptions();
+  assert.equal(f.requests, 0);
+  assert.equal(f.active.size, 0);
+  assert.ok(f.attempts.every(attempt => attempt.unsubscribes === 1));
+});
+
+test('subscription lifecycle: immediate reconnect waits for pending stale cleanup', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const oldStop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  const old = [...f.attempts]; oldStop();
+  const stop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  assert.equal(f.attempts.length, 2);
+  for (const attempt of old) attempt.resolve();
+  await flushSubscriptions();
+  assert.equal(f.attempts.length, 4);
+  assert.ok(old.every(attempt => attempt.unsubscribes === 1));
+  for (const attempt of f.attempts.slice(2)) attempt.resolve();
+  await flushSubscriptions();
+  oldStop(); // An obsolete disposer must not disconnect the new observer.
+  assert.equal(f.active.size, 2);
+  stop(); assert.equal(f.active.size, 0);
+});
+
+test('subscription lifecycle: old event type resolves after a new subscription', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const oldStop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  const [oldEntity, oldDevice] = f.attempts; oldStop();
+  const stop = api.observeDiscovery(f.hass, () => {});
+  oldEntity.resolve(); await flushSubscriptions();
+  const newEntity = f.attempts[2]; newEntity.resolve(); await flushSubscriptions();
+  oldDevice.callback(); oldDevice.resolve(); await flushSubscriptions();
+  const newDevice = f.attempts[3]; newDevice.resolve(); await flushSubscriptions();
+  assert.equal(f.requests, 0);
+  assert.equal(f.active.size, 2);
+  assert.equal(oldEntity.unsubscribes, 1); assert.equal(oldDevice.unsubscribes, 1);
+  stop(); assert.equal(f.active.size, 0);
+});
+
+test('subscription lifecycle: cards and editor share subscriptions until the last disconnect', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const cards = [new api.Card(), new api.Card()], editor = new api.Editor();
+  editor.render = () => {};
+  for (const observer of [...cards, editor]) {
+    observer.setConfig({ status_entity: 'sensor.one_status' }); observer.hass = f.hass;
+  }
+  for (const card of cards) card.willUpdate();
+  await api.loadIntegration('sensor.one_status', f.hass); await flushSubscriptions();
+  assert.equal(f.attempts.length, 2);
+  for (const attempt of f.attempts) attempt.resolve();
+  await flushSubscriptions();
+  cards[0].disconnectedCallback(); cards[1].disconnectedCallback();
+  assert.equal(f.active.size, 2);
+  f.attempts[0].callback(); await flushSubscriptions();
+  assert.equal(f.requests, 4);
+  editor.disconnectedCallback(); editor.disconnectedCallback();
+  assert.equal(f.active.size, 0);
+  assert.ok(f.attempts.every(attempt => attempt.unsubscribes === 1));
+});
+
+test('subscription lifecycle: repeated reconnect cycles leave no subscriptions or callbacks', async () => {
+  const api = setup(), f = subscriptionFixture();
+  let stop = api.observeDiscovery(f.hass, () => {});
+  for (let cycle = 0; cycle < 5; cycle++) {
+    await flushSubscriptions();
+    const pending = f.attempts.slice(-2);
+    stop(); stop();
+    stop = api.observeDiscovery(f.hass, () => {});
+    for (const attempt of pending) { attempt.callback(); attempt.resolve(); }
+    await flushSubscriptions();
+    assert.equal(f.active.size, 2);
+  }
+  stop();
+  for (const attempt of f.attempts.slice(-2)) attempt.resolve();
+  await flushSubscriptions();
+  for (const attempt of f.attempts) attempt.callback();
+  await flushSubscriptions();
+  assert.equal(f.requests, 0); assert.equal(f.active.size, 0);
+  assert.ok(f.attempts.every(attempt => attempt.unsubscribes === 1));
+});
+
+test('subscription lifecycle: rejection is bounded and reconnect can subscribe again', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const stop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  f.attempts[0].reject(); f.attempts[1].resolve(); await flushSubscriptions();
+  assert.equal(f.attempts.length, 2); assert.equal(f.active.size, 1);
+  stop();
+  const nextStop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  for (const attempt of f.attempts.slice(2)) attempt.resolve();
+  await flushSubscriptions();
+  assert.equal(f.active.size, 2);
+  nextStop(); assert.equal(f.active.size, 0);
+});
+
+test('subscription lifecycle: stale rejection cannot interfere with a reconnect', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const stop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions(); stop();
+  const nextStop = api.observeDiscovery(f.hass, () => {});
+  f.attempts[0].reject(); f.attempts[1].reject(); await flushSubscriptions();
+  assert.equal(f.attempts.length, 4);
+  for (const attempt of f.attempts.slice(2)) attempt.resolve();
+  await flushSubscriptions();
+  assert.equal(f.active.size, 2);
+  nextStop(); assert.equal(f.active.size, 0);
+});
+
+test('subscription lifecycle: stale callbacks cannot refresh registries after reconnect', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const stop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  const old = [...f.attempts];
+  for (const attempt of old) attempt.resolve();
+  await flushSubscriptions(); stop();
+  const nextStop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  for (const attempt of f.attempts.slice(2)) attempt.resolve();
+  await flushSubscriptions();
+  for (const attempt of old) attempt.callback();
+  await flushSubscriptions(); assert.equal(f.requests, 0);
+  f.attempts[2].callback(); await flushSubscriptions(); assert.equal(f.requests, 2);
+  nextStop();
+  for (const attempt of f.attempts) attempt.callback();
+  await flushSubscriptions(); assert.equal(f.requests, 2); assert.equal(f.active.size, 0);
+});
+
+test('subscription lifecycle: synchronous subscription errors do not escape or loop', async () => {
+  const api = setup(), f = subscriptionFixture(); let attempts = 0;
+  f.hass.connection.subscribeEvents = () => { attempts++; throw new Error('Disconnected'); };
+  const stop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions(); assert.equal(attempts, 2);
+  stop();
+  const nextStop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions(); assert.equal(attempts, 4);
+  nextStop();
+});
+
+test('subscription lifecycle: many reconnects before resolution subscribe only the latest session', async () => {
+  const api = setup(), f = subscriptionFixture();
+  let stop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  for (let i = 0; i < 10; i++) {
+    stop(); stop = api.observeDiscovery(f.hass, () => {});
+    await flushSubscriptions(); assert.equal(f.attempts.length, 2);
+  }
+  for (const attempt of [...f.attempts]) attempt.resolve();
+  await flushSubscriptions(); assert.equal(f.attempts.length, 4);
+  for (const attempt of f.attempts.slice(2)) attempt.resolve();
+  await flushSubscriptions(); assert.equal(f.active.size, 2);
+  stop(); assert.equal(f.active.size, 0);
+});
+
+test('subscription lifecycle: stale callbacks cannot queue a refresh during pending discovery', async () => {
+  const api = setup(), f = subscriptionFixture();
+  const stop = api.observeDiscovery(f.hass, () => {});
+  await flushSubscriptions();
+  const old = [...f.attempts]; stop();
+  const nextStop = api.observeDiscovery(f.hass, () => {});
+  let resolveEntities, requests = 0;
+  f.hass.callWS = message => {
+    requests++;
+    return message.type === 'config/entity_registry/list'
+      ? new Promise(resolve => { resolveEntities = resolve; }) : Promise.resolve([]);
+  };
+  const pending = api.loadIntegration('sensor.one_status', f.hass);
+  await flushSubscriptions();
+  for (const attempt of old) { attempt.callback(); attempt.resolve(); }
+  resolveEntities(fixture('one')); await pending; await flushSubscriptions();
+  assert.equal(requests, 2);
+  nextStop();
+  for (const attempt of f.attempts.slice(2)) attempt.resolve();
+  await flushSubscriptions(); assert.equal(f.active.size, 0);
+});
+
+test('subscription lifecycle: card reconnect and connection switching isolate pending subscriptions', async () => {
+  const api = setup(), first = subscriptionFixture(), second = subscriptionFixture();
+  const card = new api.Card(); card.setConfig({ status_entity: 'sensor.one_status' });
+  card.hass = first.hass; card.willUpdate();
+  await api.loadIntegration('sensor.one_status', first.hass); await flushSubscriptions();
+  card.disconnectedCallback(); card.hass = first.hass; card.willUpdate();
+  await flushSubscriptions(); assert.equal(first.attempts.length, 2);
+  card.hass = second.hass; card.willUpdate();
+  await api.loadIntegration('sensor.one_status', second.hass); await flushSubscriptions();
+  for (const attempt of second.attempts) attempt.resolve();
+  await flushSubscriptions();
+  const updates = card.updates;
+  for (const attempt of first.attempts) { attempt.callback(); attempt.resolve(); }
+  await flushSubscriptions();
+  assert.equal(first.requests, 2); assert.equal(first.active.size, 0);
+  assert.equal(first.attempts.length, 2); assert.equal(card.updates, updates);
+  assert.equal(second.active.size, 2);
+  card.disconnectedCallback(); assert.equal(second.active.size, 0);
+});
 test('single charger resolves all roles from original names and correct domains', () => {
   const api = setup();
   const hass = hassWith(fixture('garage'));

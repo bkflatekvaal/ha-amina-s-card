@@ -27,6 +27,4 @@ The automated suite does not establish browser layout, accessibility, or every H
 
 Discovery performance regressions are checked with 2,000 state updates and renders using counted registry traversals and WebSocket requests. Additional tests cover 1,000 updates during a pending snapshot, editor updates, registry collection replacements, and event-driven refresh shared across cards. Normal state changes reuse cached charger mappings and phases even beyond the registry snapshot TTL; there is no scheduled polling. These are deterministic operation-count checks, not a browser CPU profile.
 
-## Deferred TODO
-
-Low priority: investigate the theoretical race between asynchronous `subscribeEvents()` completion and rapid disconnect/reconnect in `observeDiscovery()` / `DiscoveryController`. This is not a confirmed bug and does not block this release. Preserve the current implementation unless a test demonstrates a real problem.
+Subscription lifecycle regression tests use deferred promises to cover disconnects, rapid reconnects, out-of-order completions, shared cards/editors, rejection, stale callbacks, and connection switching. Session identities reject stale completions and callbacks; pending attempts are serialized per registry event type so reconnects cannot create duplicate subscriptions. The previously deferred race is reproduced by these tests and fixed.

@@ -7,9 +7,10 @@
 - Confirm the v1.1.0 dashboard performance regression fix in Home Assistant on real hardware.
 - Correct discovery documentation to describe cached mappings and event-driven registry refresh rather than periodic refresh on ordinary state updates. Preserve status-only setup, existing overrides, and both integrations.
 - Clarify that ZHA still requires a custom quirk installation.
-- Preserve the low-priority, unconfirmed asynchronous subscription/disconnect race as a documented TODO; make no discovery refactor or card behavior changes.
+- Fix the confirmed asynchronous subscription/disconnect race: identify subscription sessions, unsubscribe stale completions, suppress stale callbacks, and serialize pending attempts per registry event type. Preserve shared subscriptions, registry caching, and discovery behavior without polling or timers.
+- Add deterministic subscription lifecycle regression tests covering disconnect/reconnect, out-of-order completion, shared cards/editors, repeated cycles, rejection, stale callbacks, and connection switching.
 - Add CI verification that the committed distribution matches the production build, and explicitly disable HACS PR comments for validation with read-only permissions.
-- Synchronize package and lockfile versions at 1.1.1; pass all 60 automated tests, TypeScript checks, and a clean production build. The rebuilt distribution matches the committed bundle.
+- Synchronize package and lockfile versions at 1.1.1; pass all 72 automated tests, TypeScript checks, and a clean production build. Rebuild the distributed bundle with the subscription lifecycle fix.
 
 ## 1.1.0 — 2026-10-09
 
