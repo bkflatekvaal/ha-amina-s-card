@@ -2,7 +2,7 @@
 
 A compact Home Assistant dashboard card for Amina S EV chargers using Zigbee2MQTT or ZHA with the [Amina S quirk](https://github.com/attaxia/amina_s_zha_quirk). It shows status, voltage, link quality, charge limit, total power, current, and last-session energy. No template sensors or helpers are needed.
 
-Verified with both integrations and multiple chargers using separate cards. Three-phase display is experimental pending live testing.
+Supports both Zigbee2MQTT and ZHA, with automatic entity discovery and single-phase and three-phase telemetry. ZHA requires installing Attaxia's custom quirk.
 
 ## Installation
 

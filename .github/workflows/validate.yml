@@ -31,11 +31,16 @@ jobs:
         run: npx tsc --noEmit
       - name: Production build
         run: npm run build
+      - name: Verify committed distribution
+        run: git diff --exit-code -- dist/amina-s-card.js
 
   validate-hacs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: HACS validation
         uses: hacs/action@main
         with:
           category: plugin
+          comment: false

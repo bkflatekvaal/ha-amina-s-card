@@ -1,6 +1,17 @@
 # Changelog
 
-## 1.1.0 ? 2026-10-09
+## 1.1.1 — 2026-10-10
+
+- Document support for both Zigbee2MQTT and ZHA with Attaxia's custom quirk.
+- Verify automatic entity discovery and single-phase and three-phase telemetry on real hardware. Remove outdated experimental and pending-live-testing statements from current documentation.
+- Confirm the v1.1.0 dashboard performance regression fix in Home Assistant on real hardware.
+- Correct discovery documentation to describe cached mappings and event-driven registry refresh rather than periodic refresh on ordinary state updates. Preserve status-only setup, existing overrides, and both integrations.
+- Clarify that ZHA still requires a custom quirk installation.
+- Preserve the low-priority, unconfirmed asynchronous subscription/disconnect race as a documented TODO; make no discovery refactor or card behavior changes.
+- Add CI verification that the committed distribution matches the production build, and explicitly disable HACS PR comments for validation with read-only permissions.
+- Synchronize package and lockfile versions at 1.1.1; pass all 60 automated tests, TypeScript checks, and a clean production build. The rebuilt distribution matches the committed bundle.
+
+## 1.1.0 — 2026-10-09
 
 - Fix the severe dashboard performance regression introduced with registry-based automatic entity discovery in v1.0.7.
 - Cache resolved entity mappings and phase entities per charger and connection, reuse resolved configuration, and avoid registry traversal and discovery-signature serialization on ordinary Home Assistant state updates.

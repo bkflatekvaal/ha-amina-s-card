@@ -1,6 +1,6 @@
 # Power, current, and voltage
 
-Three-phase behavior is experimental pending live verification. The card has been tested with single-phase charging on Zigbee2MQTT and ZHA, including multiple chargers with separate cards.
+Single-phase and three-phase telemetry are supported with both Zigbee2MQTT and ZHA. ZHA requires a [custom quirk installation](zha-setup.md).
 
 ## Power
 
