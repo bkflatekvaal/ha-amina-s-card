@@ -2,6 +2,8 @@
 
 Single-phase and three-phase telemetry are supported with both Zigbee2MQTT and ZHA. ZHA requires a [custom quirk installation](zha-setup.md).
 
+See [three-phase screenshots](screenshots.md#three-phase-telemetry) for charging and EV-connected examples.
+
 ## Power
 
 Power uses the selected total power entity, discovered from the charger device or falling back to `_total_active_power` for MQTT/Zigbee2MQTT and `_total_power` for ZHA, unless overridden. The entity's live `unit_of_measurement` determines conversion: W is divided by 1000, kW is displayed directly, and MW is multiplied by 1000. Displayed power always uses kW.
