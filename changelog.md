@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 - 2026-10-20
+
+- Update installation instructions now that Amina S Card is included in the HACS default repository list.
+- Update vulnerable build dependencies in the lockfile; npm audit reports no known vulnerabilities.
+- Synchronize package and lockfile versions at 1.1.2.
+
 ## 1.1.1 — 2026-10-10
 
 - Document support for both Zigbee2MQTT and ZHA with Attaxia's custom quirk.

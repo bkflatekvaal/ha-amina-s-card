@@ -6,17 +6,13 @@ Supports both Zigbee2MQTT and ZHA, with automatic entity discovery and single-ph
 
 ## Installation
 
-### HACS custom repository
+### HACS
 
-The card is not yet listed in HACS. Add it manually as a custom repository:
+The card is available in HACS:
 
-1. Open **HACS**, then open the **⋮** menu and select **Custom repositories**.
-2. Enter `https://github.com/bkflatekvaal/ha-amina-s-card` as the repository URL.
-3. Select **Dashboard** as the type and click **Add**.
-4. Find **Amina S Card** in HACS and select **Download**.
-5. Refresh Home Assistant, then add **Amina S Card** from the dashboard card picker.
-
-See [HACS custom repository instructions](https://www.hacs.xyz/docs/faq/custom_repositories/) for more detail.
+1. Open **HACS** and search for **Amina S Card**.
+2. Select the card and choose **Download**.
+3. Refresh Home Assistant, then add **Amina S Card** from the dashboard card picker.
 
 ### Manual file installation
 
