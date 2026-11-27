@@ -4,15 +4,21 @@ A compact Home Assistant dashboard card for Amina S EV chargers using Zigbee2MQT
 
 Supports both Zigbee2MQTT and ZHA, with automatic entity discovery and single-phase and three-phase telemetry. ZHA requires installing Attaxia's custom quirk.
 
+<!-- ha-marketplace:exclude-start -->
+
 ## Installation
 
-### HACS
+### Marketplace (Home Assistant 2026.11 and later)
 
-The card is available in HACS:
+[Marketplace](https://contributors.home-assistant.io/marketplace/) is built into Home Assistant. Amina S Card is available in the catalog; no custom repository is needed.
 
-1. Open **HACS** and search for **Amina S Card**.
-2. Select the card and choose **Download**.
-3. Refresh Home Assistant, then add **Amina S Card** from the dashboard card picker.
+[Open Amina S Card in Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=bkflatekvaal&repository=ha-amina-s-card&category=plugin)
+
+1. Open **Settings > Marketplace** and search for **Amina S Card**.
+2. Open the card's page and install it.
+3. Reload your browser, then add **Amina S Card** from the dashboard card picker.
+
+Marketplace adds the dashboard resource automatically. If you manage resources in YAML, add the resource shown in the installation dialog. Reload your browser after updates too.
 
 ### Manual file installation
 
@@ -22,6 +28,8 @@ Copy [dist/amina-s-card.js](dist/amina-s-card.js) to `/config/www/amina-s-card/a
 url: /local/amina-s-card/amina-s-card.js
 type: module
 ```
+
+<!-- ha-marketplace:exclude-end -->
 
 ## Setup
 
